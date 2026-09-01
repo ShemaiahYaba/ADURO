@@ -9,7 +9,11 @@ import {
   queryToTfidfVector,
   tokenize,
 } from "./text-utils";
-import { emotionKeywordMatch } from "./emotion-keywords";
+import {
+  emotionKeywordMatch,
+  normalizeInformalGreeting,
+  priorityPhraseMatch,
+} from "./emotion-keywords";
 import type { PatternMatchResult } from "./types";
 
 type ScoredIntent = {
@@ -141,8 +145,12 @@ function scoreMessage(message: string): ScoredIntent | null {
 }
 
 export function patternMatch(message: string): PatternMatchResult {
-  const best = scoreMessage(message);
-  if (!best) return { matched: false };
+  const priority = priorityPhraseMatch(message);
+  if (priority) return priority;
+
+  const normalized = normalizeInformalGreeting(message);
+  const best = scoreMessage(normalized);
+  if (!best) return emotionKeywordMatch(message) ?? { matched: false };
 
   const isFactual = isFactTag(best.tag);
   const threshold = isFactual
@@ -152,6 +160,15 @@ export function patternMatch(message: string): PatternMatchResult {
   const minOverlap = best.score >= 0.9 ? 1 : 2;
 
   if (best.score >= threshold && best.overlap >= minOverlap) {
+    // Reject weak scared matches unless the user explicitly names fear.
+    if (
+      best.tag === "scared" &&
+      best.score < 0.85 &&
+      !/\b(scared|afraid|frightened|fear)\b/i.test(message)
+    ) {
+      return emotionKeywordMatch(message) ?? { matched: false };
+    }
+
     return {
       matched: true,
       tag: best.tag,

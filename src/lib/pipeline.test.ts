@@ -32,6 +32,17 @@ describe("pipeline", () => {
     expect(result.text.toLowerCase()).not.toContain("not sure i understood");
   });
 
+  it("handles contextual follow-up without gateway", async () => {
+    const history = [
+      {
+        role: "assistant" as const,
+        content: "I am sorry to hear that. What is the reason behind this?",
+      },
+    ];
+    const result = await runPipeline("just work", "test-session", 2, history);
+    expect(result.text.toLowerCase()).not.toContain("not sure i understood");
+  });
+
   it("handles factual question via pattern-match", async () => {
     const result = await runPipeline("Define Mental Health", "test-session", 0, []);
     expect(result.emotion).toBe("factual");

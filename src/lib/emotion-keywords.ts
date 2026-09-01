@@ -1,6 +1,12 @@
 import { getRouteTypeForTag } from "./intents";
 import type { PatternMatchResult } from "./types";
 
+/** Phrases that must win over weak TF-IDF matches. */
+const PRIORITY_PHRASES: { tag: string; pattern: RegExp }[] = [
+  { tag: "sad", pattern: /\b(type of way|some type of way)\b/i },
+  { tag: "stressed", pattern: /\b(fatigue|fatigued|tired|exhausted|worn\s*out)\b/i },
+];
+
 /** High-signal emotion phrases when TF-IDF misses informal wording. */
 const EMOTION_RULES: { tag: string; pattern: RegExp }[] = [
   { tag: "stressed", pattern: /\b(stressed|stress|burned?\s*out|overwhelmed)\b/i },
@@ -15,12 +21,47 @@ const EMOTION_RULES: { tag: string; pattern: RegExp }[] = [
   { tag: "scared", pattern: /\b(scared|afraid|frightened)\b/i },
   { tag: "sleep", pattern: /\b(insomnia|can'?t\s+sleep|trouble\s+sleeping)\b/i },
   { tag: "death", pattern: /\b(died|passed\s+away|lost\s+(my|a))\b/i },
-  { tag: "greeting", pattern: /^(hi|hey|hello|good\s+(morning|afternoon|evening))\b/i },
 ];
+
+export function normalizeInformalGreeting(message: string): string {
+  const trimmed = message.trim();
+  if (/^h+i+!*$/i.test(trimmed)) return "Hi";
+  if (/^he+y+!*$/i.test(trimmed)) return "Hey";
+  if (/^hello+!*$/i.test(trimmed)) return "Hello";
+  return message;
+}
+
+export function isFuzzyGreeting(message: string): boolean {
+  const trimmed = message.trim();
+  return /^(hi+|hey+|hello+)[!.?]*$/i.test(trimmed);
+}
+
+export function priorityPhraseMatch(message: string): PatternMatchResult | null {
+  for (const { tag, pattern } of PRIORITY_PHRASES) {
+    if (pattern.test(message)) {
+      return {
+        matched: true,
+        tag,
+        routeType: getRouteTypeForTag(tag),
+        confidence: 0.9,
+      };
+    }
+  }
+  return null;
+}
 
 export function emotionKeywordMatch(message: string): PatternMatchResult | null {
   const trimmed = message.trim();
   if (!trimmed) return null;
+
+  if (isFuzzyGreeting(trimmed)) {
+    return {
+      matched: true,
+      tag: "greeting",
+      routeType: getRouteTypeForTag("greeting"),
+      confidence: 0.9,
+    };
+  }
 
   for (const { tag, pattern } of EMOTION_RULES) {
     if (pattern.test(trimmed)) {

@@ -1,3 +1,4 @@
+import { contextFollowUpMatch } from "./context-followup";
 import {
   GENERIC_REFUSAL,
   NO_INFO_RESPONSE,
@@ -41,6 +42,11 @@ export async function runPipeline(
   const pattern = patternMatch(message);
   if (pattern.matched) {
     return resolveFromTag(pattern.tag, message, sessionId, messageIndex);
+  }
+
+  const followUp = contextFollowUpMatch(message, history);
+  if (followUp?.matched) {
+    return resolveFromTag(followUp.tag, message, sessionId, messageIndex);
   }
 
   if (!isGatewayConfigured()) {

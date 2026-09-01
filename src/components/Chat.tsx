@@ -5,7 +5,6 @@ import { CrisisBanner } from "@/components/CrisisBanner";
 import { EmotionOrb } from "@/components/EmotionOrb";
 import { MessageBubble } from "@/components/MessageBubble";
 import { TypingIndicator } from "@/components/TypingIndicator";
-import { DISCLAIMER } from "@/lib/constants";
 import type { ChatMessage, Emotion } from "@/lib/types";
 
 const SESSION_KEY = "aduro_session_id";
@@ -157,9 +156,6 @@ export function Chat({ nickname }: ChatProps) {
       </div>
 
       <div className="border-t border-[var(--surface-elevated)] bg-[var(--surface)] px-4 py-3">
-        <p className="mb-2 text-center text-[10px] text-[var(--muted)]">
-          {DISCLAIMER}
-        </p>
         <div className="mx-auto flex max-w-lg gap-2">
           <textarea
             value={input}

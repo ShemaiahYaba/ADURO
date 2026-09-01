@@ -48,6 +48,12 @@ function clean(): void {
       intent.patterns.push("Hey Aduro", "Hello Aduro", "Hi Aduro");
     }
 
+    if (intent.tag === "scared") {
+      intent.patterns = intent.patterns.filter(
+        (p) => !p.toLowerCase().includes("what do i do"),
+      );
+    }
+
     if (intent.tag === "fact-13") {
       intent.responses = intent.responses.map((r) =>
         r.replace(/Although Pandora cannot/g, "Although Aduro cannot"),

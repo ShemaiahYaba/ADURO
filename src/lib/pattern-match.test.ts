@@ -39,6 +39,18 @@ describe("pattern-match", () => {
     if (result.matched) expect(result.tag).toBe("greeting");
   });
 
+  it("matches elongated hi", () => {
+    const result = patternMatch("hiiii");
+    expect(result.matched).toBe(true);
+    if (result.matched) expect(result.tag).toBe("greeting");
+  });
+
+  it("routes type of way to sad not scared", () => {
+    const result = patternMatch("I'm feeling a type of way");
+    expect(result.matched).toBe(true);
+    if (result.matched) expect(result.tag).toBe("sad");
+  });
+
   it("does not match off-topic as mental health", () => {
     const result = patternMatch("Who won the World Cup?");
     expect(result.matched).toBe(false);
