@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0f1419;
+  --foreground: #e8eaed;
+  --surface: #1a2332;
+  --surface-elevated: #243044;
+  --accent: #6b9bd1;
+  --accent-soft: #4a7ab8;
+  --user-bubble: #2d5a8a;
+  --assistant-bubble: #243044;
+  --muted: #8b9cb3;
+  --crisis: #c45c5c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  min-height: 100dvh;
+}
+
+@keyframes orb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-4px);
+  }
+}
+
+.orb-pulse {
+  animation: orb-pulse 3s ease-in-out infinite;
+}
+
+.typing-dot {
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
