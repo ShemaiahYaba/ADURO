@@ -14,7 +14,10 @@
         "Bonjour",
         "Konnichiwa",
         "Guten tag",
-        "Ola"
+        "Ola",
+        "Hey Aduro",
+        "Hello Aduro",
+        "Hi Aduro"
       ],
       "responses": [
         "Hello there. Tell me how are you feeling today?",
@@ -216,7 +219,11 @@
         "I am so stressed",
         "I feel stuck",
         "I still feel stressed",
-        "I am so burned out"
+        "I am so burned out",
+        "I'm feeling stressed",
+        "I feel stressed",
+        "feeling a bit stressed",
+        "I'm really stressed"
       ],
       "responses": [
         "What do you think is causing this?",

@@ -27,6 +27,18 @@ describe("pattern-match", () => {
     if (result.matched) expect(result.tag).toBe("stressed");
   });
 
+  it("matches informal stress phrasing", () => {
+    const result = patternMatch("I'm feeling a bit stressed");
+    expect(result.matched).toBe(true);
+    if (result.matched) expect(result.tag).toBe("stressed");
+  });
+
+  it("matches hey aduro greeting", () => {
+    const result = patternMatch("Hey Aduro");
+    expect(result.matched).toBe(true);
+    if (result.matched) expect(result.tag).toBe("greeting");
+  });
+
   it("does not match off-topic as mental health", () => {
     const result = patternMatch("Who won the World Cup?");
     expect(result.matched).toBe(false);

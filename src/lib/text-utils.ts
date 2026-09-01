@@ -114,11 +114,33 @@ const STOPWORDS = new Set([
   "doing",
 ]);
 
+const TOKEN_ALIASES: Record<string, string> = {
+  feeling: "feel",
+  feels: "feel",
+  felt: "feel",
+  stressed: "stress",
+  stressing: "stress",
+  anxious: "anxiety",
+  worrying: "worry",
+  worried: "worry",
+  lonely: "lonely",
+  sadness: "sad",
+  depressed: "depress",
+  depression: "depress",
+  hopeless: "hopeless",
+  overwhelmed: "overwhelm",
+};
+
+export function normalizeToken(token: string): string {
+  return TOKEN_ALIASES[token] ?? token;
+}
+
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/[^\w\s']/g, " ")
     .split(/\s+/)
+    .map(normalizeToken)
     .filter((t) => t.length > 1 && !STOPWORDS.has(t));
 }
 

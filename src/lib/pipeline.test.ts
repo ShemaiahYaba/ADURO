@@ -21,6 +21,17 @@ describe("pipeline", () => {
     expect(result.emotion).toBe("neutral");
   });
 
+  it("handles informal stress without gateway", async () => {
+    const result = await runPipeline(
+      "I'm feeling a bit stressed",
+      "test-session",
+      0,
+      [],
+    );
+    expect(result.emotion).toBe("stress");
+    expect(result.text.toLowerCase()).not.toContain("not sure i understood");
+  });
+
   it("handles factual question via pattern-match", async () => {
     const result = await runPipeline("Define Mental Health", "test-session", 0, []);
     expect(result.emotion).toBe("factual");

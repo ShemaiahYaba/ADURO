@@ -9,6 +9,7 @@ import {
   queryToTfidfVector,
   tokenize,
 } from "./text-utils";
+import { emotionKeywordMatch } from "./emotion-keywords";
 import type { PatternMatchResult } from "./types";
 
 type ScoredIntent = {
@@ -159,7 +160,7 @@ export function patternMatch(message: string): PatternMatchResult {
     };
   }
 
-  return { matched: false };
+  return emotionKeywordMatch(message) ?? { matched: false };
 }
 
 /** Reset cached TF-IDF index (for tests). */
