@@ -5,7 +5,8 @@ import { CrisisBanner } from "@/components/CrisisBanner";
 import { EmotionOrb } from "@/components/EmotionOrb";
 import { MessageBubble } from "@/components/MessageBubble";
 import { TypingIndicator } from "@/components/TypingIndicator";
-import type { ChatMessage, Emotion } from "@/lib/types";
+import type { ChatMessage, DialogueState, Emotion } from "@/lib/types";
+import { INITIAL_DIALOGUE_STATE } from "@/lib/types";
 
 const SESSION_KEY = "aduro_session_id";
 const TYPING_DELAY_MS = 800;
@@ -31,6 +32,9 @@ export function Chat({ nickname }: ChatProps) {
   const [isTyping, setIsTyping] = useState(false);
   const [pendingDelivered, setPendingDelivered] = useState(false);
   const [sessionId, setSessionId] = useState("anonymous");
+  const [dialogueState, setDialogueState] = useState<DialogueState>(
+    INITIAL_DIALOGUE_STATE,
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
   const messageIndexRef = useRef(0);
 
@@ -75,16 +79,22 @@ export function Chat({ nickname }: ChatProps) {
           sessionId,
           messageIndex,
           history,
+          dialogueState,
         }),
       });
 
       if (!res.ok) throw new Error("Request failed");
 
-      const data = (await res.json()) as { text: string; emotion: Emotion };
+      const data = (await res.json()) as {
+        text: string;
+        emotion: Emotion;
+        dialogueState: DialogueState;
+      };
 
       await new Promise((r) => setTimeout(r, TYPING_DELAY_MS));
 
       setEmotion(data.emotion);
+      setDialogueState(data.dialogueState);
       setPendingDelivered(false);
       setMessages((prev) => [
         ...prev,
@@ -109,7 +119,7 @@ export function Chat({ nickname }: ChatProps) {
     } finally {
       setIsTyping(false);
     }
-  }, [input, isTyping, messages, sessionId]);
+  }, [input, isTyping, messages, sessionId, dialogueState]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {

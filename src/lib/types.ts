@@ -1,13 +1,3 @@
-export type Intent = {
-  tag: string;
-  patterns: string[];
-  responses: string[];
-};
-
-export type IntentsFile = {
-  intents: Intent[];
-};
-
 export type Emotion =
   | "sadness"
   | "anger"
@@ -21,7 +11,36 @@ export type Emotion =
   | "happy"
   | "grief";
 
-export type RouteType = "emotional" | "factual" | "conversational" | "unknown";
+export type UserAct =
+  | "disclose_feeling"
+  | "elaborate"
+  | "accept_offer"
+  | "decline_offer"
+  | "ask_rationale"
+  | "express_doubt"
+  | "factual_question"
+  | "social"
+  | "unknown";
+
+export type Classification = {
+  emotion: Emotion;
+  userAct: UserAct;
+  templateId?: string;
+  topic?: string;
+  confidence: number;
+};
+
+export type DialogueState = {
+  activeFlow: "none" | "stress_support";
+  phase: string;
+  lastBotAct: string;
+};
+
+export const INITIAL_DIALOGUE_STATE: DialogueState = {
+  activeFlow: "none",
+  phase: "idle",
+  lastBotAct: "none",
+};
 
 export type ChatTurn = {
   role: "user" | "assistant";
@@ -31,18 +50,11 @@ export type ChatTurn = {
 export type PatternMatchResult =
   | {
       matched: true;
-      tag: string;
-      routeType: RouteType;
+      templateId: string;
+      routeType: "emotional" | "factual" | "conversational";
       confidence: number;
     }
   | { matched: false };
-
-export type RouteResult = {
-  intentTag: string;
-  routeType: RouteType;
-  emotion: Emotion;
-  confidence: number;
-};
 
 export type SafetyResult =
   | { handled: true; text: string; emotion: Emotion }
@@ -51,6 +63,7 @@ export type SafetyResult =
 export type PipelineResult = {
   text: string;
   emotion: Emotion;
+  dialogueState: DialogueState;
 };
 
 export type ChatMessage = {
@@ -65,4 +78,34 @@ export type KbEntry = {
   response: string;
   patternText: string;
   embedding: number[] | null;
+};
+
+export type ResponseTemplate = {
+  emotion: Emotion;
+  responses: string[];
+  patterns: string[];
+};
+
+export type FactsFile = {
+  facts: Array<{
+    id: string;
+    patterns: string[];
+    response: string;
+  }>;
+};
+
+export type TemplatesFile = {
+  templates: Record<string, ResponseTemplate & { emotion: string }>;
+};
+
+export type FlowsFile = {
+  stress_support: {
+    description: string;
+    phases: string[];
+  };
+  rationaleMap: Array<{
+    lastBotAct: string;
+    userAct: UserAct;
+    templateId: string;
+  }>;
 };

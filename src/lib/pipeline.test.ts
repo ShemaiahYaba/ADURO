@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { runPipeline } from "./pipeline";
 import { resetPatternMatchCache } from "./pattern-match";
 import { resetKbCache } from "./knowledge-base";
+import { INITIAL_DIALOGUE_STATE } from "./types";
 
 describe("pipeline", () => {
   beforeEach(() => {
@@ -9,10 +10,11 @@ describe("pipeline", () => {
     resetKbCache();
   });
 
-  it("handles crisis without gateway", async () => {
+  it("handles crisis", async () => {
     const result = await runPipeline("I want to die", "test-session", 0, []);
     expect(result.emotion).toBe("crisis");
     expect(result.text).toContain("MANI");
+    expect(result.dialogueState).toEqual(INITIAL_DIALOGUE_STATE);
   });
 
   it("handles greeting via pattern-match", async () => {
@@ -21,7 +23,7 @@ describe("pipeline", () => {
     expect(result.emotion).toBe("neutral");
   });
 
-  it("handles informal stress without gateway", async () => {
+  it("handles informal stress and enters stress flow", async () => {
     const result = await runPipeline(
       "I'm feeling a bit stressed",
       "test-session",
@@ -29,17 +31,28 @@ describe("pipeline", () => {
       [],
     );
     expect(result.emotion).toBe("stress");
+    expect(result.dialogueState.activeFlow).toBe("stress_support");
     expect(result.text.toLowerCase()).not.toContain("not sure i understood");
   });
 
-  it("handles contextual follow-up without gateway", async () => {
-    const history = [
-      {
-        role: "assistant" as const,
-        content: "I am sorry to hear that. What is the reason behind this?",
-      },
-    ];
-    const result = await runPipeline("just work", "test-session", 2, history);
+  it("handles elaborate follow-up in stress flow", async () => {
+    const state = {
+      activeFlow: "stress_support" as const,
+      phase: "stressed_disclosed",
+      lastBotAct: "asked_cause",
+    };
+    const result = await runPipeline(
+      "just work",
+      "test-session",
+      2,
+      [
+        {
+          role: "assistant",
+          content: "What is the reason behind this?",
+        },
+      ],
+      state,
+    );
     expect(result.text.toLowerCase()).not.toContain("not sure i understood");
   });
 
@@ -59,38 +72,42 @@ describe("pipeline", () => {
     expect(result.emotion).toBe("off_topic");
   });
 
-  it("routes not really to no-approach when learn-more was offered", async () => {
-    const history = [
-      {
-        role: "assistant" as const,
-        content:
-          "Would you like to learn more about that?",
-      },
-    ];
-    const result = await runPipeline("not really", "test-session", 1, history);
+  it("routes not really in stress flow to tips declined", async () => {
+    const state = {
+      activeFlow: "stress_support" as const,
+      phase: "offered_tips",
+      lastBotAct: "offered_learn_more",
+    };
+    const result = await runPipeline("not really", "test-session", 1, [], state);
     expect(result.text.toLowerCase()).toContain("learn more");
     expect(result.text.toLowerCase()).not.toContain("meditation");
   });
 
-  it("does not pitch meditation after skeptical follow-up to break advice", async () => {
-    const history = [
-      {
-        role: "assistant" as const,
-        content: "Give yourself a break. Go easy on yourself.",
-      },
-    ];
-    const result = await runPipeline("are you sure?", "test-session", 2, history);
+  it("returns break rationale after skeptical follow-up", async () => {
+    const state = {
+      activeFlow: "stress_support" as const,
+      phase: "stressed_disclosed",
+      lastBotAct: "suggested_break",
+    };
+    const result = await runPipeline("are you sure?", "test-session", 2, [], state);
+    expect(result.text.toLowerCase()).toMatch(/break|rest|recharge/);
     expect(result.text.toLowerCase()).not.toContain("meditation");
-    expect(result.text.toLowerCase()).not.toContain("user-agree");
   });
 
-  it("does not return user-meditation closure for feel-better without flow", async () => {
+  it("returns meditation rationale when asked why after offer", async () => {
+    const state = {
+      activeFlow: "stress_support" as const,
+      phase: "offered_meditation",
+      lastBotAct: "offered_meditation",
+    };
     const result = await runPipeline(
-      "I feel better now",
+      "why meditation",
       "test-session",
-      0,
+      3,
       [],
+      state,
     );
+    expect(result.text.toLowerCase()).toMatch(/meditation|breath|breathing/);
     expect(result.text.toLowerCase()).not.toContain("within your control");
   });
 });

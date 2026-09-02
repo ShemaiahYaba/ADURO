@@ -2,8 +2,9 @@ import {
   PATTERN_THRESHOLD_EMOTIONAL,
   PATTERN_THRESHOLD_FACTUAL,
 } from "./constants";
-import { isClassifierTag } from "./flow-tags";
-import { getAllIntents, getRouteTypeForTag, isFactTag } from "./intents";
+import { getAllFacts, isFactId } from "./facts";
+import { getAllTemplates } from "./templates";
+import { getRouteTypeForTemplate } from "./route-types";
 import {
   cosineSimilarity,
   meaningfulOverlap,
@@ -17,8 +18,8 @@ import {
 } from "./emotion-keywords";
 import type { PatternMatchResult } from "./types";
 
-type ScoredIntent = {
-  tag: string;
+type ScoredTemplate = {
+  templateId: string;
   score: number;
   overlap: number;
   routeType: "emotional" | "factual" | "conversational";
@@ -28,23 +29,34 @@ let idfCache: Map<string, number> | null = null;
 let termOrder: string[] | null = null;
 let patternVectors: Map<string, number[][]> | null = null;
 
+type PatternSource = { id: string; patterns: string[] };
+
+function getPatternSources(): PatternSource[] {
+  const fromTemplates = getAllTemplates()
+    .filter((t) => t.patterns.length > 0)
+    .map((t) => ({ id: t.id, patterns: t.patterns }));
+
+  const fromFacts = getAllFacts().map((f) => ({
+    id: f.id,
+    patterns: f.patterns,
+  }));
+
+  return [...fromTemplates, ...fromFacts];
+}
+
 function ensureTfidfIndex(): void {
   if (idfCache && termOrder && patternVectors) return;
 
-  const intents = getAllIntents();
+  const sources = getPatternSources();
   const allDocs: string[][] = [];
-  const intentPatternTokens: { tag: string; tokens: string[] }[] = [];
 
-  for (const intent of intents) {
-    if (!isClassifierTag(intent.tag)) continue;
-    for (const pattern of intent.patterns) {
+  for (const source of sources) {
+    for (const pattern of source.patterns) {
       const tokens = tokenize(pattern);
       if (tokens.length === 0 && pattern.trim().length > 0) {
         allDocs.push([pattern.toLowerCase().trim()]);
-        intentPatternTokens.push({ tag: intent.tag, tokens: [pattern.toLowerCase().trim()] });
       } else if (tokens.length > 0) {
         allDocs.push(tokens);
-        intentPatternTokens.push({ tag: intent.tag, tokens });
       }
     }
   }
@@ -54,15 +66,14 @@ function ensureTfidfIndex(): void {
   termOrder = [...idf.keys()];
 
   patternVectors = new Map();
-  for (const intent of intents) {
-    if (!isClassifierTag(intent.tag)) continue;
+  for (const source of sources) {
     const vectors: number[][] = [];
-    for (const pattern of intent.patterns) {
+    for (const pattern of source.patterns) {
       const tokens = tokenize(pattern);
       const t = tokens.length > 0 ? tokens : [pattern.toLowerCase().trim()];
       vectors.push(queryToTfidfVector(t, idf, termOrder));
     }
-    patternVectors.set(intent.tag, vectors);
+    patternVectors.set(source.id, vectors);
   }
 }
 
@@ -82,7 +93,7 @@ function buildIdf(documents: string[][]): { idf: Map<string, number> } {
   return { idf };
 }
 
-function scoreMessage(message: string): ScoredIntent | null {
+function scoreMessage(message: string): ScoredTemplate | null {
   ensureTfidfIndex();
   if (!idfCache || !termOrder || !patternVectors) return null;
 
@@ -90,34 +101,33 @@ function scoreMessage(message: string): ScoredIntent | null {
   const queryTokens = tokenize(message);
   if (queryTokens.length === 0 && normalized.length === 0) return null;
 
-  let best: ScoredIntent | null = null;
+  let best: ScoredTemplate | null = null;
 
-  for (const intent of getAllIntents()) {
-    if (!isClassifierTag(intent.tag)) continue;
-    for (const pattern of intent.patterns) {
+  for (const source of getPatternSources()) {
+    for (const pattern of source.patterns) {
       const patternLower = pattern.toLowerCase().trim();
 
       if (patternLower.length <= 20 && normalized === patternLower) {
         return {
-          tag: intent.tag,
+          templateId: source.id,
           score: 1,
           overlap: queryTokens.length || 1,
-          routeType: getRouteTypeForTag(intent.tag),
+          routeType: getRouteTypeForTemplate(source.id),
         };
       }
 
       if (patternLower.length > 3 && normalized.includes(patternLower)) {
-        const candidate: ScoredIntent = {
-          tag: intent.tag,
+        const candidate: ScoredTemplate = {
+          templateId: source.id,
           score: 0.95,
           overlap: tokenize(pattern).length,
-          routeType: getRouteTypeForTag(intent.tag),
+          routeType: getRouteTypeForTemplate(source.id),
         };
         if (!best || candidate.score > best.score) best = candidate;
       }
     }
 
-    const vectors = patternVectors.get(intent.tag) ?? [];
+    const vectors = patternVectors.get(source.id) ?? [];
     const queryVec = queryToTfidfVector(
       queryTokens.length > 0 ? queryTokens : [normalized],
       idfCache,
@@ -125,18 +135,20 @@ function scoreMessage(message: string): ScoredIntent | null {
     );
 
     for (let i = 0; i < vectors.length; i++) {
-      const patternTokens = tokenize(intent.patterns[i] ?? "");
+      const patternTokens = tokenize(source.patterns[i] ?? "");
       const overlap = meaningfulOverlap(
         queryTokens.length > 0 ? queryTokens : [normalized],
-        patternTokens.length > 0 ? patternTokens : [intent.patterns[i]?.toLowerCase() ?? ""],
+        patternTokens.length > 0
+          ? patternTokens
+          : [source.patterns[i]?.toLowerCase() ?? ""],
       );
 
       const score = cosineSimilarity(queryVec, vectors[i]!);
-      const candidate: ScoredIntent = {
-        tag: intent.tag,
+      const candidate: ScoredTemplate = {
+        templateId: source.id,
         score,
         overlap,
-        routeType: getRouteTypeForTag(intent.tag),
+        routeType: getRouteTypeForTemplate(source.id),
       };
 
       if (!best || score > best.score) {
@@ -156,7 +168,7 @@ export function patternMatch(message: string): PatternMatchResult {
   const best = scoreMessage(normalized);
   if (!best) return emotionKeywordMatch(message) ?? { matched: false };
 
-  const isFactual = isFactTag(best.tag);
+  const isFactual = isFactId(best.templateId);
   const threshold = isFactual
     ? PATTERN_THRESHOLD_FACTUAL
     : PATTERN_THRESHOLD_EMOTIONAL;
@@ -164,9 +176,8 @@ export function patternMatch(message: string): PatternMatchResult {
   const minOverlap = best.score >= 0.9 ? 1 : 2;
 
   if (best.score >= threshold && best.overlap >= minOverlap) {
-    // Reject weak scared matches unless the user explicitly names fear.
     if (
-      best.tag === "scared" &&
+      best.templateId === "scared" &&
       best.score < 0.85 &&
       !/\b(scared|afraid|frightened|fear)\b/i.test(message)
     ) {
@@ -175,7 +186,7 @@ export function patternMatch(message: string): PatternMatchResult {
 
     return {
       matched: true,
-      tag: best.tag,
+      templateId: best.templateId,
       routeType: best.routeType,
       confidence: best.score,
     };
@@ -184,7 +195,6 @@ export function patternMatch(message: string): PatternMatchResult {
   return emotionKeywordMatch(message) ?? { matched: false };
 }
 
-/** Reset cached TF-IDF index (for tests). */
 export function resetPatternMatchCache(): void {
   idfCache = null;
   termOrder = null;

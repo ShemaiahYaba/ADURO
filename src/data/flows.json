@@ -1,0 +1,33 @@
+{
+  "stress_support": {
+    "description": "Stress disclosure → tips → optional meditation",
+    "phases": [
+      "idle",
+      "stressed_disclosed",
+      "offered_tips",
+      "offered_meditation"
+    ]
+  },
+  "rationaleMap": [
+    {
+      "lastBotAct": "suggested_break",
+      "userAct": "express_doubt",
+      "templateId": "break_rationale"
+    },
+    {
+      "lastBotAct": "suggested_break",
+      "userAct": "ask_rationale",
+      "templateId": "break_rationale"
+    },
+    {
+      "lastBotAct": "offered_meditation",
+      "userAct": "ask_rationale",
+      "templateId": "meditation_rationale"
+    },
+    {
+      "lastBotAct": "offered_meditation",
+      "userAct": "express_doubt",
+      "templateId": "meditation_rationale"
+    }
+  ]
+}

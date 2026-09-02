@@ -10,7 +10,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "clean:intents": "tsx scripts/clean-intents.ts",
+    "clean:intents": "tsx scripts/split-intents.ts",
+    "split:intents": "tsx scripts/split-intents.ts",
     "build:kb": "tsx scripts/build-kb-embeddings.ts",
     "generate:kb": "tsx scripts/generate-lexical-kb.ts"
   },

@@ -1,54 +1,23 @@
-import { contextFollowUpMatch } from "./context-followup";
-import {
-  emotionForTag,
-  GENERIC_REFUSAL,
-  NO_INFO_RESPONSE,
-} from "./constants";
-import { isOpenAiConfigured } from "./openai";
-import { isFactTag } from "./intents";
+import { classify } from "./classifier";
+import { NO_INFO_RESPONSE } from "./constants";
 import { retrieveFact } from "./knowledge-base";
-import { patternMatch } from "./pattern-match";
 import {
-  classifyRoute,
-  ROUTER_EMOTION_MIN_CONFIDENCE,
-} from "./router";
-import { pickRefusalResponse, pickResponse } from "./responses";
+  selectOffTopic,
+  selectResponse,
+} from "./dialogue-policy";
 import { checkSafety } from "./safety";
-import type { ChatTurn, Emotion, PatternMatchResult, PipelineResult } from "./types";
+import type { ChatTurn, DialogueState, PipelineResult } from "./types";
+import { INITIAL_DIALOGUE_STATE } from "./types";
 
-const SHORT_MESSAGE_MAX_WORDS = 20;
-
-function wordCount(text: string): number {
-  return text.trim().split(/\s+/).filter(Boolean).length;
-}
-
-function preferContextFollowUpFirst(message: string, history: ChatTurn[]): boolean {
-  return history.length > 0 && wordCount(message) <= SHORT_MESSAGE_MAX_WORDS;
-}
-
-async function resolveFromTag(
-  tag: string,
-  message: string,
-  sessionId: string,
-  messageIndex: number,
-): Promise<PipelineResult> {
-  if (isFactTag(tag)) {
-    const fact = await retrieveFact(message);
-    if (fact) return fact;
-    return { text: NO_INFO_RESPONSE, emotion: "factual" };
-  }
-
-  const { text, emotion } = pickResponse(tag, sessionId, messageIndex, message);
-  return { text, emotion };
-}
-
-async function resolvePatternMatch(
-  pattern: PatternMatchResult & { matched: true },
-  message: string,
-  sessionId: string,
-  messageIndex: number,
-): Promise<PipelineResult> {
-  return resolveFromTag(pattern.tag, message, sessionId, messageIndex);
+export function normalizeDialogueState(
+  state?: DialogueState | null,
+): DialogueState {
+  if (!state) return { ...INITIAL_DIALOGUE_STATE };
+  return {
+    activeFlow: state.activeFlow ?? "none",
+    phase: state.phase ?? "idle",
+    lastBotAct: state.lastBotAct ?? "none",
+  };
 }
 
 export async function runPipeline(
@@ -56,72 +25,56 @@ export async function runPipeline(
   sessionId: string,
   messageIndex: number,
   history: ChatTurn[] = [],
+  dialogueState: DialogueState = INITIAL_DIALOGUE_STATE,
 ): Promise<PipelineResult> {
+  const state = normalizeDialogueState(dialogueState);
+
   const safety = checkSafety(message);
   if (safety.handled) {
-    return { text: safety.text, emotion: safety.emotion };
+    return {
+      text: safety.text,
+      emotion: safety.emotion,
+      dialogueState: state,
+    };
   }
 
-  const contextFirst = preferContextFollowUpFirst(message, history);
+  const classification = await classify(message, history, state);
 
-  if (contextFirst) {
-    const followUp = contextFollowUpMatch(message, history);
-    if (followUp?.matched) {
-      return resolveFromTag(followUp.tag, message, sessionId, messageIndex);
+  if (classification.userAct === "factual_question") {
+    const fact = await retrieveFact(message);
+    if (fact) {
+      return {
+        text: fact.text,
+        emotion: fact.emotion,
+        dialogueState: state,
+      };
     }
-
-    const pattern = patternMatch(message);
-    if (pattern.matched) {
-      return resolvePatternMatch(pattern, message, sessionId, messageIndex);
-    }
-  } else {
-    const pattern = patternMatch(message);
-    if (pattern.matched) {
-      return resolvePatternMatch(pattern, message, sessionId, messageIndex);
-    }
-
-    const followUp = contextFollowUpMatch(message, history);
-    if (followUp?.matched) {
-      return resolveFromTag(followUp.tag, message, sessionId, messageIndex);
-    }
+    return {
+      text: NO_INFO_RESPONSE,
+      emotion: "factual",
+      dialogueState: state,
+    };
   }
 
-  if (!isOpenAiConfigured()) {
-    const refusal = pickRefusalResponse();
-    return { text: refusal.text, emotion: refusal.emotion };
-  }
-
-  const route = await classifyRoute(message, history);
-  if (!route || route.routeType === "unknown") {
+  if (
+    classification.userAct === "unknown" &&
+    classification.confidence < 0.4 &&
+    !classification.templateId
+  ) {
     const hasMhVocab =
       /\b(feel|feeling|anxious|anxiety|stress|sad|depress|mental|therapy|emotion)\b/i.test(
         message,
       );
-    if (hasMhVocab) {
-      return { text: NO_INFO_RESPONSE, emotion: "neutral" };
+    if (!hasMhVocab) {
+      return selectOffTopic(state);
     }
-    return { text: GENERIC_REFUSAL, emotion: "off_topic" };
   }
 
-  if (route.routeType === "factual") {
-    const fact = await retrieveFact(message);
-    if (fact) return fact;
-    return { text: NO_INFO_RESPONSE, emotion: "factual" };
-  }
-
-  const resolved = await resolveFromTag(
-    route.intentTag,
-    message,
+  return selectResponse(
+    classification,
+    state,
     sessionId,
     messageIndex,
+    message,
   );
-
-  if (route.confidence >= ROUTER_EMOTION_MIN_CONFIDENCE) {
-    return { text: resolved.text, emotion: route.emotion };
-  }
-
-  return {
-    text: resolved.text,
-    emotion: emotionForTag(route.intentTag),
-  };
 }

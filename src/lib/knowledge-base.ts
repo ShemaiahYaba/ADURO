@@ -2,15 +2,15 @@ import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { embed } from "ai";
 import { KB_MIN_SCORE, NO_INFO_RESPONSE } from "./constants";
+import { getAllFacts } from "./facts";
 import { embedModel, isOpenAiConfigured } from "./openai";
-import { getAllFactIntents } from "./intents";
+import { patternMatch } from "./pattern-match";
 import {
   cosineSimilarity,
   meaningfulOverlap,
   tokenize,
 } from "./text-utils";
 import type { Emotion, KbEntry } from "./types";
-import { patternMatch } from "./pattern-match";
 
 let kbCache: KbEntry[] | null = null;
 
@@ -24,10 +24,10 @@ function loadKbEntries(): KbEntry[] {
     return raw;
   }
 
-  kbCache = getAllFactIntents().map((intent) => ({
-    tag: intent.tag,
-    response: intent.responses[0] ?? NO_INFO_RESPONSE,
-    patternText: intent.patterns.join(" | "),
+  kbCache = getAllFacts().map((fact) => ({
+    tag: fact.id,
+    response: fact.response || NO_INFO_RESPONSE,
+    patternText: fact.patterns.join(" | "),
     embedding: null,
   }));
   return kbCache;
@@ -36,7 +36,7 @@ function loadKbEntries(): KbEntry[] {
 function lexicalRetrieve(message: string): { text: string; emotion: Emotion } | null {
   const match = patternMatch(message);
   if (match.matched && match.routeType === "factual") {
-    const entry = loadKbEntries().find((e) => e.tag === match.tag);
+    const entry = loadKbEntries().find((e) => e.tag === match.templateId);
     if (entry) {
       return { text: entry.response, emotion: "factual" };
     }
@@ -71,10 +71,7 @@ export async function retrieveFact(
     for (const entry of withEmbeddings) {
       const patternTokens = tokenize(entry.patternText);
       const overlap = meaningfulOverlap(queryTokens, patternTokens);
-      const score = cosineSimilarity(
-        [...queryEmbedding],
-        entry.embedding!,
-      );
+      const score = cosineSimilarity([...queryEmbedding], entry.embedding!);
 
       if (!best || score > best.score) {
         best = { entry, score, overlap };
@@ -92,10 +89,10 @@ export async function retrieveFact(
 }
 
 export function getKbEntriesForBuild(): KbEntry[] {
-  return getAllFactIntents().map((intent) => ({
-    tag: intent.tag,
-    response: intent.responses[0] ?? NO_INFO_RESPONSE,
-    patternText: intent.patterns.join(" | "),
+  return getAllFacts().map((fact) => ({
+    tag: fact.id,
+    response: fact.response || NO_INFO_RESPONSE,
+    patternText: fact.patterns.join(" | "),
     embedding: null,
   }));
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { runPipeline } from "@/lib/pipeline";
-import type { ChatTurn } from "@/lib/types";
+import { normalizeDialogueState, runPipeline } from "@/lib/pipeline";
+import type { ChatTurn, DialogueState } from "@/lib/types";
 
 export async function POST(req: Request) {
   try {
@@ -9,6 +9,7 @@ export async function POST(req: Request) {
       sessionId?: string;
       messageIndex?: number;
       history?: ChatTurn[];
+      dialogueState?: DialogueState;
     };
 
     const message = body.message?.trim();
@@ -19,12 +20,14 @@ export async function POST(req: Request) {
     const sessionId = body.sessionId ?? "anonymous";
     const messageIndex = body.messageIndex ?? 0;
     const history = Array.isArray(body.history) ? body.history : [];
+    const dialogueState = normalizeDialogueState(body.dialogueState);
 
     const result = await runPipeline(
       message,
       sessionId,
       messageIndex,
       history,
+      dialogueState,
     );
 
     return NextResponse.json(result);
