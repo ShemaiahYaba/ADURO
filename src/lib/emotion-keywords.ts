@@ -31,7 +31,7 @@ const EMOTION_RULES: { templateId: string; pattern: RegExp }[] = [
   },
   {
     templateId: "happy",
-    pattern: /\b(feel\s+great|feel\s+good|i'?m\s+happy|cheerful)\b/i,
+    pattern: /\b(feel\s+great|feel\s+good|i'?m\s+good|i'?m\s+fine|i'?m\s+ok|i'?m\s+okay|i'?m\s+happy|cheerful)\b/i,
   },
   { templateId: "scared", pattern: /\b(scared|afraid|frightened)\b/i },
   {
@@ -43,15 +43,22 @@ const EMOTION_RULES: { templateId: string; pattern: RegExp }[] = [
 
 export function normalizeInformalGreeting(message: string): string {
   const trimmed = message.trim();
+  if (/^h+i+\s+aduro[!.?]*$/i.test(trimmed)) return "Hi Aduro";
+  if (/^he+y+\s+aduro[!.?]*$/i.test(trimmed)) return "Hey Aduro";
+  if (/^hello+\s+aduro[!.?]*$/i.test(trimmed)) return "Hello Aduro";
   if (/^h+i+!*$/i.test(trimmed)) return "Hi";
   if (/^he+y+!*$/i.test(trimmed)) return "Hey";
   if (/^hello+!*$/i.test(trimmed)) return "Hello";
   return message;
 }
 
-export function isFuzzyGreeting(message: string): boolean {
+export function isAduroGreeting(message: string): boolean {
   const trimmed = message.trim();
-  return /^(hi+|hey+|hello+)[!.?]*$/i.test(trimmed);
+  return /^(hi+|hey+|hello+)(\s+aduro)?[!.?]*$/i.test(trimmed);
+}
+
+export function isFuzzyGreeting(message: string): boolean {
+  return isAduroGreeting(message);
 }
 
 export function priorityPhraseMatch(message: string): PatternMatchResult | null {

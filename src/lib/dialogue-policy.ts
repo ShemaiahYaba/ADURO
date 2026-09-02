@@ -203,8 +203,7 @@ export function selectResponse(
   ) {
     if (
       classification.emotion === "stress" ||
-      classification.templateId === "stressed" ||
-      /\b(tired|stress|overwhelm|burnout)\b/i.test(message)
+      classification.templateId === "stressed"
     ) {
       return startStressFlow(classification, sessionId, messageIndex, message);
     }
@@ -220,13 +219,27 @@ export function selectResponse(
     );
   }
 
+  if (
+    classification.userAct === "disclose_feeling" &&
+    classification.emotion !== "stress"
+  ) {
+    return result(
+      "prompt_elaborate",
+      state,
+      sessionId,
+      messageIndex,
+      message,
+    );
+  }
+
   if (classification.userAct === "unknown") {
-    const refusal = pickRefusalResponse();
-    return {
-      text: refusal.text,
-      emotion: refusal.emotion,
-      dialogueState: state,
-    };
+    return result(
+      "prompt_elaborate",
+      state,
+      sessionId,
+      messageIndex,
+      message,
+    );
   }
 
   return {

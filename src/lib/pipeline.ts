@@ -2,7 +2,6 @@ import { classify } from "./classifier";
 import { NO_INFO_RESPONSE } from "./constants";
 import { retrieveFact } from "./knowledge-base";
 import {
-  selectOffTopic,
   selectResponse,
 } from "./dialogue-policy";
 import { checkSafety } from "./safety";
@@ -40,7 +39,10 @@ export async function runPipeline(
 
   const classification = await classify(message, history, state);
 
-  if (classification.userAct === "factual_question") {
+  if (
+    classification.userAct === "factual_question" &&
+    state.activeFlow === "none"
+  ) {
     const fact = await retrieveFact(message);
     if (fact) {
       return {
@@ -54,20 +56,6 @@ export async function runPipeline(
       emotion: "factual",
       dialogueState: state,
     };
-  }
-
-  if (
-    classification.userAct === "unknown" &&
-    classification.confidence < 0.4 &&
-    !classification.templateId
-  ) {
-    const hasMhVocab =
-      /\b(feel|feeling|anxious|anxiety|stress|sad|depress|mental|therapy|emotion)\b/i.test(
-        message,
-      );
-    if (!hasMhVocab) {
-      return selectOffTopic(state);
-    }
   }
 
   return selectResponse(

@@ -45,6 +45,12 @@ describe("pattern-match", () => {
     if (result.matched) expect(result.templateId).toBe("greeting");
   });
 
+  it("matches heyyy aduro greeting", () => {
+    const result = patternMatch("heyyy aduro");
+    expect(result.matched).toBe(true);
+    if (result.matched) expect(result.templateId).toBe("greeting");
+  });
+
   it("routes type of way to sad not scared", () => {
     const result = patternMatch("I'm feeling a type of way");
     expect(result.matched).toBe(true);

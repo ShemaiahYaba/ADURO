@@ -1,9 +1,9 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { ROUTER_MIN_CONFIDENCE } from "./constants";
+import { classifyOffline, inferStressFlowUserAct } from "./classifier-offline";
 import { isOpenAiConfigured, routerModel } from "./openai";
-import { patternMatch } from "./pattern-match";
-import { getTemplateById } from "./templates";
+import { getAllTemplates } from "./templates";
 import type { ChatTurn, Classification, DialogueState, Emotion, UserAct } from "./types";
 
 const emotionSchema = z.enum([
@@ -35,137 +35,47 @@ const userActSchema = z.enum([
 const classificationSchema = z.object({
   emotion: emotionSchema,
   userAct: userActSchema,
+  templateId: z.string().optional(),
   topic: z.string().optional(),
   confidence: z.number().min(0).max(1),
 });
 
-function detectUserAct(message: string, state: DialogueState): UserAct {
-  const msg = message.trim().toLowerCase();
-
-  if (/\b(why|how come|what do you mean|explain)\b/i.test(msg)) {
-    if (/\b(meditation|break|rest)\b/i.test(msg)) return "ask_rationale";
-    if (state.lastBotAct !== "none") return "ask_rationale";
-  }
-
-  if (/\b(no|not really|nah|i guess not|nope)\b/i.test(msg)) {
-    return "decline_offer";
-  }
-
-  if (/\b(are you sure|you sure|really\??|sure\??)\b/i.test(msg)) {
-    return "express_doubt";
-  }
-
-  if (
-    /\b(yes|yeah|yep|ok|okay|please|i would|learn more|absolutely|you'?re right)\b/i.test(
-      msg,
-    ) &&
-    msg.split(/\s+/).length <= 12
-  ) {
-    return "accept_offer";
-  }
-
-  if (
-    /\b(work|job|overtime|shift|boss|exam|school|study|money|family|relationship|deadline|because)\b/i.test(
-      msg,
-    )
-  ) {
-    return "elaborate";
-  }
-
-  if (/\b(feel|feeling|felt|stress|anxious|sad|tired|overwhelm)\b/i.test(msg)) {
-    return "disclose_feeling";
-  }
-
-  return "unknown";
+function templateHintList(): string {
+  return getAllTemplates()
+    .filter((t) => t.patterns.length > 0)
+    .map((t) => t.id)
+    .slice(0, 50)
+    .join(", ");
 }
 
-function classificationFromPattern(
-  message: string,
-  state: DialogueState,
-): Classification | null {
-  const match = patternMatch(message);
-  if (!match.matched) return null;
+function buildSystemPrompt(state: DialogueState): string {
+  return `You classify user messages for Aduro, a supportive mental health chatbot.
 
-  const act = detectUserAct(message, state);
-  let userAct: UserAct = act;
+Infer emotion, userAct, and optionally templateId from the latest user message AND conversation context.
+Never diagnose. Never refuse in-scope emotional conversation as off_topic.
 
-  if (match.routeType === "factual") {
-    return {
-      emotion: "factual",
-      userAct: "factual_question",
-      templateId: match.templateId,
-      confidence: match.confidence,
-    };
-  }
+userAct meanings:
+- social: greetings (including informal "heyyy aduro"), thanks, goodbye, small talk, bot questions
+- disclose_feeling: shares or hints at feelings ("there's something", "not great", "on my mind")
+- elaborate: explains context when continuing a conversation (work stress, family, etc.)
+- accept_offer / decline_offer: yes/no to a bot suggestion
+- ask_rationale: asks why (why meditation, why rest)
+- express_doubt: skeptical (are you sure, really?)
+- factual_question: mental health definition or fact question
+- unknown: only when genuinely ambiguous after reading context
 
-  if (match.routeType === "conversational") {
-    return {
-      emotion: getTemplateById(match.templateId)?.emotion ?? "neutral",
-      userAct: "social",
-      templateId: match.templateId,
-      confidence: match.confidence,
-    };
-  }
+Guidelines:
+- Read the full thread. Short replies often respond to the bot's last turn.
+- "I'm good" after a greeting is social/happy, not off_topic.
+- "but there's something though" after small talk is disclose_feeling — user wants to open up.
+- Elongated greetings ("heyyy", "hiiii") with or without "aduro" are social.
+- In an active support flow, prefer elaborate/accept/decline over unknown.
+- Use off_topic only for clearly unrelated topics (sports scores, homework, recipes).
+- templateId is optional; suggest one only when a canned template clearly fits (e.g. greeting, stressed, happy).
 
-  if (userAct === "unknown") {
-    userAct = "disclose_feeling";
-  }
+Dialogue state: flow=${state.activeFlow}, phase=${state.phase}, lastBotAct=${state.lastBotAct}
 
-  return {
-    emotion: getTemplateById(match.templateId)?.emotion ?? "neutral",
-    userAct,
-    templateId: match.templateId,
-    confidence: match.confidence,
-  };
-}
-
-function classificationFromHeuristics(
-  message: string,
-  state: DialogueState,
-): Classification {
-  const userAct = detectUserAct(message, state);
-  const hasMh =
-    /\b(feel|feeling|stress|anxious|anxiety|sad|tired|mental|overwhelm)\b/i.test(
-      message,
-    );
-
-  if (userAct === "ask_rationale" || userAct === "express_doubt") {
-    return {
-      emotion: "stress",
-      userAct,
-      confidence: 0.75,
-    };
-  }
-
-  if (userAct === "decline_offer" || userAct === "accept_offer") {
-    return {
-      emotion: "stress",
-      userAct,
-      confidence: 0.7,
-    };
-  }
-
-  if (userAct === "elaborate") {
-    return {
-      emotion: "stress",
-      userAct: "elaborate",
-      confidence: 0.7,
-    };
-  }
-
-  if (hasMh) {
-    return {
-      emotion: "stress",
-      userAct: userAct === "unknown" ? "disclose_feeling" : userAct,
-      confidence: 0.6,
-    };
-  }
-
-  return {
-    emotion: "neutral",
-    userAct: "unknown",
-    confidence: 0.3,
-  };
+Known templateIds: ${templateHintList()}`;
 }
 
 function dedupeHistory(history: ChatTurn[], currentMessage: string): ChatTurn[] {
@@ -173,58 +83,104 @@ function dedupeHistory(history: ChatTurn[], currentMessage: string): ChatTurn[] 
   const filtered = history.filter(
     (t) => !(t.role === "user" && t.content.trim().toLowerCase() === trimmed),
   );
-  return filtered.slice(-4).map((t) => ({
+  return filtered.slice(-6).map((t) => ({
     role: t.role,
-    content: t.content.slice(0, 300),
+    content: t.content.slice(0, 400),
   }));
 }
 
-async function classifyOnline(
+function normalizeLlmClassification(
+  output: z.infer<typeof classificationSchema>,
+  state: DialogueState,
+  message: string,
+): Classification {
+  let emotion = output.emotion as Emotion;
+  let userAct = output.userAct as UserAct;
+
+  if (state.activeFlow === "stress_support") {
+    const flowAct = inferStressFlowUserAct(message, state.lastBotAct);
+    if (
+      userAct === "factual_question" ||
+      userAct === "unknown" ||
+      userAct === "social" ||
+      emotion === "factual" ||
+      emotion === "off_topic"
+    ) {
+      userAct = flowAct;
+      emotion = "stress";
+    }
+  } else if (state.activeFlow !== "none") {
+    if (userAct === "unknown") {
+      userAct = "elaborate";
+    }
+    if (emotion === "off_topic") {
+      emotion = "neutral";
+    }
+  }
+
+  if (userAct === "unknown" && emotion === "off_topic") {
+    userAct = "social";
+    emotion = "neutral";
+  }
+
+  if (
+    userAct === "unknown" &&
+    (emotion === "neutral" || emotion === "happy" || emotion === "sadness")
+  ) {
+    userAct = "disclose_feeling";
+  }
+
+  return {
+    emotion,
+    userAct,
+    templateId: output.templateId,
+    topic: output.topic,
+    confidence: output.confidence,
+  };
+}
+
+async function classifyWithLlm(
   message: string,
   history: ChatTurn[],
   state: DialogueState,
-): Promise<Classification | null> {
+): Promise<Classification> {
   const recent = dedupeHistory(history, message);
 
-  try {
-    const { output } = await generateText({
-      model: routerModel(),
-      system: `You classify user messages for Aduro, a mental health support chatbot.
-Return emotion and userAct only. Never diagnose.
+  const { output } = await generateText({
+    model: routerModel(),
+    system: buildSystemPrompt(state),
+    messages: [
+      ...recent.map((t) => ({
+        role: t.role as "user" | "assistant",
+        content: t.content,
+      })),
+      { role: "user" as const, content: message },
+    ],
+    output: Output.object({ schema: classificationSchema }),
+  });
 
-userAct meanings:
-- disclose_feeling: shares emotional state
-- elaborate: explains cause/context (work, exams, etc.)
-- accept_offer: agrees to a suggestion
-- decline_offer: declines (not really, no)
-- ask_rationale: asks why (why meditation, why rest)
-- express_doubt: skeptical (are you sure, really)
-- factual_question: mental health definition/fact question
-- social: greeting, thanks, goodbye, about bot
-- unknown: unclear
-
-Current dialogue: flow=${state.activeFlow}, phase=${state.phase}, lastBotAct=${state.lastBotAct}`,
-      messages: [
-        ...recent.map((t) => ({
-          role: t.role as "user" | "assistant",
-          content: t.content,
-        })),
-        { role: "user" as const, content: message },
-      ],
-      output: Output.object({ schema: classificationSchema }),
-    });
-
-    if (!output || output.confidence < ROUTER_MIN_CONFIDENCE) return null;
-
-    return {
-      emotion: output.emotion as Emotion,
-      userAct: output.userAct as UserAct,
-      topic: output.topic,
-      confidence: output.confidence,
-    };
-  } catch {
-    return null;
+  if (!output || output.confidence < ROUTER_MIN_CONFIDENCE) {
+    return classifyOffline(message, state);
   }
+
+  return normalizeLlmClassification(output, state, message);
+}
+
+function applyActiveFlowContext(
+  classification: Classification,
+  message: string,
+  state: DialogueState,
+): Classification {
+  if (state.activeFlow !== "stress_support") {
+    return classification;
+  }
+
+  const flowAct = inferStressFlowUserAct(message, state.lastBotAct);
+  return {
+    ...classification,
+    emotion: "stress",
+    userAct: flowAct,
+  };
 }
 
 export async function classify(
@@ -232,40 +188,17 @@ export async function classify(
   history: ChatTurn[],
   state: DialogueState,
 ): Promise<Classification> {
-  const act = detectUserAct(message, state);
-  const strongActs: UserAct[] = [
-    "decline_offer",
-    "accept_offer",
-    "ask_rationale",
-    "express_doubt",
-    "elaborate",
-  ];
-  if (strongActs.includes(act)) {
-    const heuristic = classificationFromHeuristics(message, state);
-    heuristic.userAct = act;
-    return heuristic;
-  }
-
-  const fromPattern = classificationFromPattern(message, state);
-  if (fromPattern && fromPattern.confidence >= 0.55) {
-    const act = detectUserAct(message, state);
-    if (act !== "unknown") {
-      fromPattern.userAct = act;
-    }
-    return fromPattern;
-  }
+  let classification: Classification;
 
   if (isOpenAiConfigured()) {
-    const online = await classifyOnline(message, history, state);
-    if (online) {
-      if (fromPattern?.templateId) {
-        online.templateId = fromPattern.templateId;
-      }
-      return online;
+    try {
+      classification = await classifyWithLlm(message, history, state);
+    } catch {
+      classification = classifyOffline(message, state);
     }
+  } else {
+    classification = classifyOffline(message, state);
   }
 
-  if (fromPattern) return fromPattern;
-
-  return classificationFromHeuristics(message, state);
+  return applyActiveFlowContext(classification, message, state);
 }

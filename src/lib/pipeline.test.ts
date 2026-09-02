@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as classifier from "./classifier";
 import { runPipeline } from "./pipeline";
 import { resetPatternMatchCache } from "./pattern-match";
 import { resetKbCache } from "./knowledge-base";
@@ -8,6 +9,7 @@ describe("pipeline", () => {
   beforeEach(() => {
     resetPatternMatchCache();
     resetKbCache();
+    vi.restoreAllMocks();
   });
 
   it("handles crisis", async () => {
@@ -21,6 +23,34 @@ describe("pipeline", () => {
     const result = await runPipeline("Hello", "test-session", 0, []);
     expect(result.text.length).toBeGreaterThan(0);
     expect(result.emotion).toBe("neutral");
+  });
+
+  it("handles informal heyyy aduro greeting", async () => {
+    const result = await runPipeline("heyyy aduro", "test-session", 0, []);
+    expect(result.emotion).not.toBe("off_topic");
+    expect(result.text.toLowerCase()).not.toContain("can't help you with that");
+  });
+
+  it("prompts elaboration for vague disclosure", async () => {
+    vi.spyOn(classifier, "classify").mockResolvedValueOnce({
+      emotion: "neutral",
+      userAct: "disclose_feeling",
+      confidence: 0.88,
+    });
+
+    const result = await runPipeline(
+      "but there's something though",
+      "test-session",
+      2,
+      [
+        { role: "user", content: "hey aduro" },
+        { role: "assistant", content: "Hi there. What brings you here today?" },
+        { role: "user", content: "I'm good" },
+        { role: "assistant", content: "Oh I see. That's great." },
+      ],
+    );
+    expect(result.text.toLowerCase()).not.toContain("can't help you with that");
+    expect(result.text.toLowerCase()).toMatch(/tell me more|what's on your mind|go on|listening/);
   });
 
   it("handles informal stress and enters stress flow", async () => {
@@ -91,7 +121,7 @@ describe("pipeline", () => {
     };
     const result = await runPipeline("are you sure?", "test-session", 2, [], state);
     expect(result.text.toLowerCase()).toMatch(/break|rest|recharge/);
-    expect(result.text.toLowerCase()).not.toContain("meditation");
+    expect(result.text.toLowerCase()).not.toMatch(/meditation/);
   });
 
   it("returns meditation rationale when asked why after offer", async () => {
