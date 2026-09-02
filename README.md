@@ -5,11 +5,12 @@ Emotion-aware mental health support chatbot. Classifies user messages, responds 
 ## Architecture
 
 ```
-Safety (deterministic) → Pattern-match fast path → LLM router (ambiguous only) → KB / templates
+Safety (deterministic) → Pattern-match fast path → Context follow-up → LLM router (ambiguous) → KB / templates
 ```
 
 - **Safety** and **pattern-match** use the latest message only
-- **LLM router** receives the last 4 conversation turns (when Gateway is configured)
+- **Context follow-up** handles short replies using the last assistant turn (no API call)
+- **LLM router** uses OpenAI with the last 4 conversation turns when `OPENAI_API_KEY` is set
 - User-facing text always comes from templates or KB — never generated clinical content
 
 ## Quick start
@@ -23,21 +24,19 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Works without AI Gateway credentials using pattern-match + lexical KB fallback.
+Works without an API key using pattern-match + context follow-up + lexical KB fallback.
 
-## AI Gateway setup (optional, for LLM router + embeddings)
+## OpenAI setup
 
-1. Enable AI Gateway in your [Vercel project settings](https://vercel.com/docs/ai-gateway)
-2. Link and pull env:
+1. Copy `.env.example` → `.env.local` (or `.env`):
 
-```bash
-vercel link
-vercel env pull .env.local
+```env
+OPENAI_API_KEY=sk-...
 ```
 
-Or set `AI_GATEWAY_API_KEY` in `.env.local` (see `.env.example`).
+2. Restart the dev server: `pnpm dev`
 
-3. Regenerate KB embeddings (optional):
+3. Optional — semantic fact retrieval:
 
 ```bash
 pnpm run build:kb
@@ -52,11 +51,11 @@ pnpm run build:kb
 | `pnpm test` | Run Vitest smoke tests |
 | `pnpm run clean:intents` | Regenerate `src/data/intents.json` from source |
 | `pnpm run generate:kb` | Write lexical-only `public/kb-embeddings.json` (no API key) |
-| `pnpm run build:kb` | Embed fact entries via Gateway (requires `.env.local`) |
+| `pnpm run build:kb` | Embed fact entries via OpenAI (requires `OPENAI_API_KEY`) |
 
 ## Privacy
 
-Conversation history is sent to the API route for routing only when the LLM router is invoked. Do not log message history server-side. When deployed, enable Gateway per-user rate limits before public use.
+Conversation history is sent to OpenAI for routing only when the LLM router is invoked. Do not log message history server-side. Set OpenAI usage limits in your account before public deploy.
 
 ## Helplines
 
@@ -72,5 +71,5 @@ Verify SURPIN and MANI numbers in `src/lib/constants.ts` from official sources b
 ## Tech stack
 
 - Next.js 15, TypeScript, Tailwind CSS
-- Vercel AI SDK + AI Gateway
+- Vercel AI SDK + OpenAI (`@ai-sdk/openai`)
 - Intent dataset adapted from mental health intents (rebranded Aduro)

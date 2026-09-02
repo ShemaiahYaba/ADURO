@@ -44,11 +44,10 @@ export const GENERIC_REFUSAL =
 export const HOPELESSNESS_CHECKIN =
   " When you say you feel hopeless, I want to check in — are you having thoughts of hurting yourself? If you are, please contact SURPIN at 0800 078 7746 or MANI at 0800 000 2000.";
 
-export const ROUTER_MODEL =
-  process.env.ADURO_ROUTER_MODEL ?? "openai/gpt-4o-mini";
+export const ROUTER_MODEL = process.env.ADURO_ROUTER_MODEL ?? "gpt-4o-mini";
 
 export const EMBED_MODEL =
-  process.env.ADURO_EMBED_MODEL ?? "openai/text-embedding-3-small";
+  process.env.ADURO_EMBED_MODEL ?? "text-embedding-3-small";
 
 export const PATTERN_THRESHOLD_EMOTIONAL = 0.55;
 export const PATTERN_THRESHOLD_FACTUAL = 0.7;

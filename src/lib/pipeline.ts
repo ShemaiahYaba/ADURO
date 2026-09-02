@@ -3,7 +3,7 @@ import {
   GENERIC_REFUSAL,
   NO_INFO_RESPONSE,
 } from "./constants";
-import { isGatewayConfigured } from "./gateway";
+import { isOpenAiConfigured } from "./openai";
 import { isFactTag } from "./intents";
 import { retrieveFact } from "./knowledge-base";
 import { patternMatch } from "./pattern-match";
@@ -49,7 +49,7 @@ export async function runPipeline(
     return resolveFromTag(followUp.tag, message, sessionId, messageIndex);
   }
 
-  if (!isGatewayConfigured()) {
+  if (!isOpenAiConfigured()) {
     const refusal = pickRefusalResponse();
     return { text: refusal.text, emotion: refusal.emotion };
   }

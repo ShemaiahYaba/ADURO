@@ -1,7 +1,7 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { emotionForTag, GENERIC_REFUSAL, ROUTER_MIN_CONFIDENCE, ROUTER_MODEL } from "./constants";
-import { isGatewayConfigured } from "./gateway";
+import { emotionForTag, GENERIC_REFUSAL, ROUTER_MIN_CONFIDENCE } from "./constants";
+import { isOpenAiConfigured, routerModel } from "./openai";
 import { getAllIntents } from "./intents";
 import type { ChatTurn, Emotion, RouteResult } from "./types";
 
@@ -64,7 +64,7 @@ export async function classifyRoute(
   message: string,
   history: ChatTurn[],
 ): Promise<RouteResult | null> {
-  if (!isGatewayConfigured()) {
+  if (!isOpenAiConfigured()) {
     return null;
   }
 
@@ -72,7 +72,7 @@ export async function classifyRoute(
 
   try {
     const { output } = await generateText({
-      model: ROUTER_MODEL,
+      model: routerModel(),
       system: buildRouterSystemPrompt(),
       messages: [
         ...recent.map((t) => ({

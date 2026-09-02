@@ -1,8 +1,8 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { embed } from "ai";
-import { EMBED_MODEL, KB_MIN_SCORE, NO_INFO_RESPONSE } from "./constants";
-import { isGatewayConfigured } from "./gateway";
+import { KB_MIN_SCORE, NO_INFO_RESPONSE } from "./constants";
+import { embedModel, isOpenAiConfigured } from "./openai";
 import { getAllFactIntents } from "./intents";
 import {
   cosineSimilarity,
@@ -50,7 +50,7 @@ export async function retrieveFact(
   const entries = loadKbEntries();
   const queryTokens = tokenize(message);
 
-  if (!isGatewayConfigured()) {
+  if (!isOpenAiConfigured()) {
     return lexicalRetrieve(message);
   }
 
@@ -62,7 +62,7 @@ export async function retrieveFact(
 
   try {
     const { embedding: queryEmbedding } = await embed({
-      model: EMBED_MODEL,
+      model: embedModel(),
       value: message,
     });
 
