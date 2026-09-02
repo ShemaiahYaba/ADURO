@@ -8,6 +8,19 @@ const DEST = join(DEST_DIR, "intents.json");
 
 const HELPLINES_TEXT = `Please seek help immediately by contacting SURPIN at 0800 078 7746 or MANI at 0800 000 2000.`;
 
+/** Must stay in sync with src/lib/flow-tags.ts FLOW_TRANSITION_TAGS + "default". */
+const FLOW_AND_CONTEXT_TAGS = new Set([
+  "problem",
+  "no-approach",
+  "learn-more",
+  "user-agree",
+  "meditation",
+  "user-meditation",
+  "pandora-useful",
+  "aduro-useful",
+  "default",
+]);
+
 type Intent = {
   tag: string;
   patterns: string[];
@@ -21,6 +34,10 @@ function clean(): void {
   const data = JSON.parse(raw) as IntentsFile;
 
   for (const intent of data.intents) {
+    if (intent.tag === "pandora-useful") {
+      intent.tag = "aduro-useful";
+    }
+
     intent.responses = intent.responses.map((r) =>
       r
         .replace(/Pandora/g, "Aduro")
@@ -58,6 +75,16 @@ function clean(): void {
       intent.responses = intent.responses.map((r) =>
         r.replace(/Although Pandora cannot/g, "Although Aduro cannot"),
       );
+    }
+
+    if (intent.tag === "casual") {
+      intent.patterns = intent.patterns.filter(
+        (p) => p.trim().toLowerCase() !== "not really",
+      );
+    }
+
+    if (FLOW_AND_CONTEXT_TAGS.has(intent.tag)) {
+      intent.patterns = [];
     }
   }
 

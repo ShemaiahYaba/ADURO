@@ -1,6 +1,7 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { emotionForTag, GENERIC_REFUSAL, ROUTER_MIN_CONFIDENCE } from "./constants";
+import { isClassifierTag } from "./flow-tags";
 import { isOpenAiConfigured, routerModel } from "./openai";
 import { getAllIntents } from "./intents";
 import type { ChatTurn, Emotion, RouteResult } from "./types";
@@ -26,8 +27,11 @@ const routeSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
+const ROUTER_EMOTION_MIN_CONFIDENCE = 0.7;
+
 function buildRouterSystemPrompt(): string {
   const tags = getAllIntents()
+    .filter((i) => isClassifierTag(i.tag))
     .map((i) => `- ${i.tag}: ${i.patterns.slice(0, 2).join("; ")}`)
     .join("\n");
 
@@ -88,7 +92,8 @@ export async function classifyRoute(
 
     if (
       output.confidence < ROUTER_MIN_CONFIDENCE ||
-      output.routeType === "unknown"
+      output.routeType === "unknown" ||
+      !isClassifierTag(output.intentTag)
     ) {
       return {
         intentTag: "default",
@@ -113,4 +118,4 @@ export function routeResultToEmotion(tag: string, fallback: Emotion): Emotion {
   return emotionForTag(tag) !== "neutral" ? emotionForTag(tag) : fallback;
 }
 
-export { GENERIC_REFUSAL };
+export { GENERIC_REFUSAL, ROUTER_EMOTION_MIN_CONFIDENCE };

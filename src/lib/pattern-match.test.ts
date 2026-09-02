@@ -55,4 +55,19 @@ describe("pattern-match", () => {
     const result = patternMatch("Who won the World Cup?");
     expect(result.matched).toBe(false);
   });
+
+  it("does not classify feel-better as flow transition tag", () => {
+    const result = patternMatch("I feel better now");
+    if (result.matched) {
+      expect(result.tag).not.toBe("user-meditation");
+      expect(result.tag).not.toBe("user-agree");
+    }
+  });
+
+  it("does not match not really as casual", () => {
+    const result = patternMatch("not really");
+    if (result.matched) {
+      expect(result.tag).not.toBe("casual");
+    }
+  });
 });

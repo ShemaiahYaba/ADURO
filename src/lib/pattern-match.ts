@@ -2,6 +2,7 @@ import {
   PATTERN_THRESHOLD_EMOTIONAL,
   PATTERN_THRESHOLD_FACTUAL,
 } from "./constants";
+import { isClassifierTag } from "./flow-tags";
 import { getAllIntents, getRouteTypeForTag, isFactTag } from "./intents";
 import {
   cosineSimilarity,
@@ -35,6 +36,7 @@ function ensureTfidfIndex(): void {
   const intentPatternTokens: { tag: string; tokens: string[] }[] = [];
 
   for (const intent of intents) {
+    if (!isClassifierTag(intent.tag)) continue;
     for (const pattern of intent.patterns) {
       const tokens = tokenize(pattern);
       if (tokens.length === 0 && pattern.trim().length > 0) {
@@ -53,6 +55,7 @@ function ensureTfidfIndex(): void {
 
   patternVectors = new Map();
   for (const intent of intents) {
+    if (!isClassifierTag(intent.tag)) continue;
     const vectors: number[][] = [];
     for (const pattern of intent.patterns) {
       const tokens = tokenize(pattern);
@@ -90,6 +93,7 @@ function scoreMessage(message: string): ScoredIntent | null {
   let best: ScoredIntent | null = null;
 
   for (const intent of getAllIntents()) {
+    if (!isClassifierTag(intent.tag)) continue;
     for (const pattern of intent.patterns) {
       const patternLower = pattern.toLowerCase().trim();
 

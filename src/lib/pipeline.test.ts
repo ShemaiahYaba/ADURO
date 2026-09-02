@@ -58,4 +58,39 @@ describe("pipeline", () => {
     );
     expect(result.emotion).toBe("off_topic");
   });
+
+  it("routes not really to no-approach when learn-more was offered", async () => {
+    const history = [
+      {
+        role: "assistant" as const,
+        content:
+          "Would you like to learn more about that?",
+      },
+    ];
+    const result = await runPipeline("not really", "test-session", 1, history);
+    expect(result.text.toLowerCase()).toContain("learn more");
+    expect(result.text.toLowerCase()).not.toContain("meditation");
+  });
+
+  it("does not pitch meditation after skeptical follow-up to break advice", async () => {
+    const history = [
+      {
+        role: "assistant" as const,
+        content: "Give yourself a break. Go easy on yourself.",
+      },
+    ];
+    const result = await runPipeline("are you sure?", "test-session", 2, history);
+    expect(result.text.toLowerCase()).not.toContain("meditation");
+    expect(result.text.toLowerCase()).not.toContain("user-agree");
+  });
+
+  it("does not return user-meditation closure for feel-better without flow", async () => {
+    const result = await runPipeline(
+      "I feel better now",
+      "test-session",
+      0,
+      [],
+    );
+    expect(result.text.toLowerCase()).not.toContain("within your control");
+  });
 });
