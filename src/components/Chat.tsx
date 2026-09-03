@@ -54,6 +54,13 @@ export function Chat({ nickname }: ChatProps) {
     }
   }, [isTyping, messages.length]);
 
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+  }, [input]);
+
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || isTyping) return;
@@ -69,8 +76,12 @@ export function Chat({ nickname }: ChatProps) {
     setInput("");
     setPendingDelivered(true);
     setIsTyping(true);
-    // Keep focus ready for the next message once the reply finishes.
-    queueMicrotask(() => inputRef.current?.focus());
+    queueMicrotask(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.focus();
+    });
 
     const history = messages.slice(-6).map((m) => ({
       role: m.role,
@@ -175,31 +186,46 @@ export function Chat({ nickname }: ChatProps) {
         </div>
       </div>
 
-      <div className="sticky bottom-0 z-20 shrink-0 border-t border-[var(--surface-elevated)] bg-[var(--surface)] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <div className="mx-auto flex max-w-lg gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Message Aduro..."
-            rows={1}
-            autoFocus
-            disabled={isTyping}
-            className="max-h-32 flex-1 resize-none rounded-2xl border border-[var(--surface-elevated)] bg-[var(--background)] px-4 py-2.5 text-[15px] outline-none focus:border-[var(--accent)] disabled:opacity-50"
-          />
-          <button
-            type="button"
-            onClick={() => void sendMessage()}
-            disabled={!input.trim() || isTyping}
-            className="rounded-2xl bg-[var(--accent)] px-5 py-2.5 font-medium text-white transition hover:bg-[var(--accent-soft)] disabled:opacity-40"
-          >
-            Send
-          </button>
+      <div className="sticky bottom-0 z-20 shrink-0 border-t border-[var(--surface-elevated)]/80 bg-[var(--surface)]/95 px-4 pt-3 backdrop-blur-md pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-lg">
+          <div className="flex items-end gap-2 rounded-2xl border border-[var(--surface-elevated)] bg-[var(--background)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] focus-within:border-[var(--accent)]/70 transition-colors">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Message Aduro..."
+              rows={1}
+              autoFocus
+              disabled={isTyping}
+              aria-label="Message Aduro"
+              className="composer-input min-h-[40px] max-h-32 flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] leading-snug text-[var(--foreground)] outline-none placeholder:text-[var(--muted)] disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={() => void sendMessage()}
+              disabled={!input.trim() || isTyping}
+              aria-label="Send message"
+              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)] text-white transition hover:bg-[var(--accent-soft)] disabled:opacity-35"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.25"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M5 12h14" />
+                <path d="M13 6l6 6-6 6" />
+              </svg>
+            </button>
+          </div>
+          <CrisisBanner />
         </div>
       </div>
-
-      <CrisisBanner />
     </div>
   );
 }

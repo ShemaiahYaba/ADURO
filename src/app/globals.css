@@ -65,3 +65,33 @@ body {
 .typing-dot:nth-child(3) {
   animation-delay: 0.3s;
 }
+
+.composer-input {
+  field-sizing: content;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.composer-input:hover,
+.composer-input:focus {
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+}
+
+.composer-input::-webkit-scrollbar {
+  width: 4px;
+}
+
+.composer-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.composer-input::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+
+.composer-input:hover::-webkit-scrollbar-thumb,
+.composer-input:focus::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
