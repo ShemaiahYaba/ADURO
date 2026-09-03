@@ -40,6 +40,20 @@ const EMOTIONAL: Set<Emotion> = new Set([
 const AFFIRM_PROGRESS_RE =
   /\b(never\s+thought|that\s+way|makes\s+sense|thank|thanks|helped|feel\s+better)\b/i;
 
+/**
+ * Default exemplar pool per act. Needed because act rotation can change the
+ * act after the caller picked an exemplar — a rotated `sit_with` must not
+ * inherit `prompt_elaborate` and fall back to "Tell me more".
+ */
+const ACT_EXEMPLAR: Partial<Record<BotAct, string>> = {
+  normalize_uncertainty: "uncertainty_ok",
+  sit_with: "presence",
+  answer_directly: "advice_humble",
+  explore: "prompt_elaborate",
+  offer_coping: "stressed",
+  explain_rationale: "break_rationale",
+};
+
 function withCovered(state: DialogueState, act: BotAct): BotAct[] {
   if (state.covered.includes(act)) return state.covered;
   return [...state.covered, act].slice(-12);
@@ -79,11 +93,16 @@ function decide(
     chosen = rotateWithoutQuestion(state);
   }
 
+  const exemplarTemplateId =
+    chosen === act
+      ? (opts.exemplarTemplateId ?? ACT_EXEMPLAR[chosen])
+      : (ACT_EXEMPLAR[chosen] ?? opts.exemplarTemplateId);
+
   return {
     act: chosen,
     allowQuestion: chosen === "explore" ? true : allowQuestion && chosen !== "sit_with",
     emotion,
-    exemplarTemplateId: opts.exemplarTemplateId,
+    exemplarTemplateId,
     verbatimText: opts.verbatimText,
     nextState: {
       ...state,
@@ -206,7 +225,7 @@ export function selectDecision(
 
   if (classification.userAct === "request_advice") {
     return decide("answer_directly", emotion, state, classification.userAct, {
-      exemplarTemplateId: emotionToTemplate(emotion),
+      exemplarTemplateId: "advice_humble",
       forceAllowQuestion: false,
     });
   }
@@ -287,7 +306,7 @@ export function selectDecision(
       state,
       classification.userAct,
       {
-        exemplarTemplateId: "prompt_elaborate",
+        exemplarTemplateId: "uncertainty_ok",
         forceAllowQuestion: false,
       },
     );
@@ -295,7 +314,7 @@ export function selectDecision(
 
   if (classification.userAct === "deflect") {
     return decide("sit_with", emotion, state, classification.userAct, {
-      exemplarTemplateId: "prompt_elaborate",
+      exemplarTemplateId: "presence",
       forceAllowQuestion: false,
     });
   }
@@ -324,7 +343,7 @@ export function selectDecision(
 
   if (classification.userAct === "decline_offer") {
     return decide("sit_with", emotion, state, classification.userAct, {
-      exemplarTemplateId: "prompt_elaborate",
+      exemplarTemplateId: "presence",
       forceAllowQuestion: false,
     });
   }

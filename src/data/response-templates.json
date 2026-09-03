@@ -648,6 +648,33 @@
         "Meditation can help calm racing thoughts and ease tension in your body. It won't fix everything, but many people find even a few minutes of focused breathing makes stress feel more manageable.",
         "It's a simple practice: slowing down, noticing your breath, and giving your mind a pause from worry. That can make stressful feelings a bit easier to handle."
       ]
+    },
+    "uncertainty_ok": {
+      "emotion": "support",
+      "responses": [
+        "Not knowing is allowed. You don't have to have an answer right now.",
+        "It's okay not to know yet. This doesn't need solving tonight.",
+        "You don't owe me an answer. Sitting with the not-knowing is hard enough."
+      ],
+      "patterns": []
+    },
+    "presence": {
+      "emotion": "support",
+      "responses": [
+        "I'm still here with you. No pressure to figure anything out.",
+        "We can just sit with this for a moment. I'm not going anywhere.",
+        "That's fair. I'm here whenever you want to pick it back up."
+      ],
+      "patterns": []
+    },
+    "advice_humble": {
+      "emotion": "support",
+      "responses": [
+        "There isn't one right move here. The kindest first step is usually looking after yourself before deciding anything.",
+        "I can't tell you what to do, but you don't have to decide today. Give yourself room before you choose.",
+        "Honestly, there's no clean answer. Start with what feels safest for you, and the rest can wait."
+      ],
+      "patterns": []
     }
   }
 }
