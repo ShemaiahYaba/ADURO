@@ -104,4 +104,27 @@ describe("output-guard", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("empty");
   });
+
+  it("rejects near-duplicate of a recent bot reply", () => {
+    const prev =
+      "What's been weighing on your mind the most since the breakup?";
+    const result = checkOutput(
+      "What's been weighing on your mind the most since the breakup?",
+      { recentBotTexts: [prev] },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("repetition");
+  });
+
+  it("accepts a different reply after a recent one", () => {
+    const result = checkOutput(
+      "Being cheated on cuts deep — of course you're hurting.",
+      {
+        recentBotTexts: [
+          "What's been weighing on your mind the most since the breakup?",
+        ],
+      },
+    );
+    expect(result.ok).toBe(true);
+  });
 });

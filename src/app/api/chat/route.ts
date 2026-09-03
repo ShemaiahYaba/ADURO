@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     // Realization metrics for evaluation (generation / fallback / block rates).
     // Message content is deliberately not logged.
     console.info(
-      `[aduro] realization=${result.source ?? "unknown"} emotion=${result.emotion} turn=${result.dialogueState.turnCount}`,
+      `[aduro] realization=${result.source ?? "unknown"} act=${result.act ?? "-"} emotion=${result.emotion} turn=${result.dialogueState.turnCount} q=${result.dialogueState.consecutiveQuestions} facts=${result.dialogueState.facts.length} factref=${result.factReferenced ? 1 : 0} repeat=${result.source === "guard_blocked" ? 1 : 0}`,
     );
 
     return NextResponse.json(result);

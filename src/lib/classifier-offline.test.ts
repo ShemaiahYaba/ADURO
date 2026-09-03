@@ -10,7 +10,7 @@ describe("classifier-offline", () => {
     expect(result.facts).toEqual([]);
   });
 
-  it("maps stress disclosure to stress flow entry", () => {
+  it("maps stress disclosure to disclose_feeling", () => {
     const result = classifyOffline(
       "I'm feeling a bit stressed",
       INITIAL_DIALOGUE_STATE,
@@ -19,12 +19,11 @@ describe("classifier-offline", () => {
     expect(result.userAct).toBe("disclose_feeling");
   });
 
-  it("infers decline in stress flow", () => {
+  it("infers decline mid-arc", () => {
     const result = classifyOffline("not really", {
       ...INITIAL_DIALOGUE_STATE,
-      activeFlow: "stress_support",
-      phase: "offered_tips",
-      lastBotAct: "offered_learn_more",
+      arc: "supporting",
+      lastBotAct: "suggested_break",
     });
     expect(result.userAct).toBe("decline_offer");
   });
@@ -32,9 +31,8 @@ describe("classifier-offline", () => {
   it("infers elaborate when asked for cause", () => {
     const result = classifyOffline("just work", {
       ...INITIAL_DIALOGUE_STATE,
-      activeFlow: "stress_support",
-      phase: "probe_cause",
-      lastBotAct: "asked_cause",
+      arc: "understanding",
+      lastBotAct: "explore",
     });
     expect(result.userAct).toBe("elaborate");
   });
@@ -44,9 +42,27 @@ describe("classifier-offline", () => {
       "She cheated that's all what should I do?",
       INITIAL_DIALOGUE_STATE,
     );
-    expect(result.facts.some((f) => /unfaithful|breakup|relationship/i.test(f))).toBe(
-      true,
-    );
-    expect(result.userAct).toBe("disclose_feeling");
+    expect(
+      result.facts.some((f) => /unfaithful|breakup|relationship/i.test(f)),
+    ).toBe(true);
+    expect(result.userAct).toBe("request_advice");
+  });
+
+  it("detects express_uncertainty", () => {
+    const result = classifyOffline("i'm not exactly sure", {
+      ...INITIAL_DIALOGUE_STATE,
+      arc: "understanding",
+      lastBotAct: "explore",
+    });
+    expect(result.userAct).toBe("express_uncertainty");
+  });
+
+  it("detects deflect", () => {
+    const result = classifyOffline("ice cream i guess", {
+      ...INITIAL_DIALOGUE_STATE,
+      arc: "understanding",
+      lastBotAct: "normalize_uncertainty",
+    });
+    expect(result.userAct).toBe("deflect");
   });
 });

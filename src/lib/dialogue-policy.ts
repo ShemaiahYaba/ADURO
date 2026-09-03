@@ -1,3 +1,4 @@
+import { isStuck, shouldAllowQuestion } from "./discourse";
 import { lookupRationaleTemplate } from "./responses";
 import type {
   BotAct,
@@ -8,160 +9,134 @@ import type {
   PolicyDecision,
 } from "./types";
 
-const STRESS_EMOTIONS = new Set<Emotion>(["stress", "anxiety", "sadness"]);
+/** Acts that constitute a suggestion the bot can be asked to justify. */
+const SUGGESTION_ACTS = new Set<LastBotAct>([
+  "suggested_break",
+  "offer_coping",
+  "offered_meditation",
+]);
+
+/**
+ * The suggestion a doubt or rationale question is about. Prefers the immediate
+ * previous act, falling back to the last suggestion made — doubt often lands a
+ * turn or two later, after an intervening "I don't know".
+ */
+function resolveSuggestion(state: DialogueState): LastBotAct | null {
+  if (SUGGESTION_ACTS.has(state.lastBotAct)) return state.lastBotAct;
+  if (state.lastSuggestion && SUGGESTION_ACTS.has(state.lastSuggestion)) {
+    return state.lastSuggestion;
+  }
+  return null;
+}
+
+const EMOTIONAL: Set<Emotion> = new Set([
+  "sadness",
+  "anger",
+  "anxiety",
+  "stress",
+  "grief",
+]);
 
 const AFFIRM_PROGRESS_RE =
-  /\b(never\s+thought|that\s+way|makes\s+sense|i\s+see|thank|thanks|helped|feel\s+better)\b/i;
+  /\b(never\s+thought|that\s+way|makes\s+sense|thank|thanks|helped|feel\s+better)\b/i;
 
 function withCovered(state: DialogueState, act: BotAct): BotAct[] {
   if (state.covered.includes(act)) return state.covered;
   return [...state.covered, act].slice(-12);
 }
 
-function decision(
+function decide(
   act: BotAct,
   emotion: Emotion,
-  next: {
-    activeFlow: DialogueState["activeFlow"];
-    phase: string;
-    lastBotAct: LastBotAct;
-    facts?: string[];
-    covered?: BotAct[];
-    turnCount?: number;
-  },
-  base: DialogueState,
-  exemplarTemplateId?: string,
-  verbatimText?: string,
-): PolicyDecision {
-  const nextState: DialogueState = {
-    activeFlow: next.activeFlow,
-    phase: next.phase,
-    lastBotAct: next.lastBotAct,
-    facts: next.facts ?? base.facts,
-    covered: next.covered ?? withCovered(base, act),
-    turnCount: next.turnCount ?? base.turnCount + 1,
-  };
-  return { act, emotion, nextState, exemplarTemplateId, verbatimText };
-}
-
-function handleStressFlow(
-  classification: Classification,
   state: DialogueState,
-): PolicyDecision | null {
-  if (state.activeFlow !== "stress_support") return null;
-
-  if (classification.userAct === "elaborate") {
-    return decision(
-      "explore",
-      "stress",
-      {
-        activeFlow: "stress_support",
-        phase: "probe_cause",
-        lastBotAct: "asked_cause",
-      },
-      state,
-      "stress_probe",
-    );
-  }
-
-  if (
-    classification.userAct === "decline_offer" &&
-    (state.lastBotAct === "offered_learn_more" ||
-      state.lastBotAct === "offered_tips")
-  ) {
-    return decision(
-      "offer_coping",
-      "stress",
-      {
-        activeFlow: "stress_support",
-        phase: "offered_tips",
-        lastBotAct: "offered_tips",
-      },
-      state,
-      "tips_declined",
-    );
-  }
-
-  if (
-    classification.userAct === "accept_offer" &&
-    state.lastBotAct === "offered_tips"
-  ) {
-    return decision(
-      "offer_coping",
-      "stress",
-      {
-        activeFlow: "stress_support",
-        phase: "offered_tips",
-        lastBotAct: "offered_learn_more",
-      },
-      state,
-      "learn_more_offer",
-    );
-  }
-
-  if (
-    classification.userAct === "accept_offer" &&
-    state.lastBotAct === "offered_learn_more"
-  ) {
-    return decision(
-      "offer_coping",
-      "stress",
-      {
-        activeFlow: "stress_support",
-        phase: "offered_meditation",
-        lastBotAct: "offered_meditation",
-      },
-      state,
-      "meditation_offer",
-    );
-  }
-
-  if (
-    classification.userAct === "accept_offer" &&
-    (classification.templateId === "meditation_guide" ||
-      state.lastBotAct === "offered_meditation")
-  ) {
-    return decision(
-      "offer_coping",
-      "stress",
-      {
-        activeFlow: "stress_support",
-        phase: "meditation_active",
-        lastBotAct: "guided_meditation",
-      },
-      state,
-      "meditation_guide",
-    );
-  }
-
-  return null;
-}
-
-function startStressFlow(
-  state: DialogueState,
-  emotion: Emotion,
+  userAct: Classification["userAct"],
+  opts: {
+    exemplarTemplateId?: string;
+    verbatimText?: string;
+    lastBotAct?: LastBotAct;
+    forceAllowQuestion?: boolean;
+  } = {},
 ): PolicyDecision {
-  return decision(
-    "offer_coping",
-    emotion === "anxiety" ? "anxiety" : "stress",
-    {
-      activeFlow: "stress_support",
-      phase: "stressed_disclosed",
-      lastBotAct: "suggested_break",
-      facts: state.facts,
+  let chosen = rotateIfRepeating(act, state);
+  const allowQuestion =
+    opts.forceAllowQuestion ??
+    (chosen === "explore"
+      ? shouldAllowQuestion(state, userAct)
+      : chosen === "validate" || chosen === "reflect" || chosen === "affirm_progress"
+        ? shouldAllowQuestion(state, userAct)
+        : chosen === "sit_with" ||
+            chosen === "normalize_uncertainty" ||
+            chosen === "answer_directly" ||
+            chosen === "offer_coping" ||
+            chosen === "explain_rationale" ||
+            chosen === "close" ||
+            chosen === "answer_fact"
+          ? false
+          : shouldAllowQuestion(state, userAct));
+
+  // explore without question budget → sit_with / normalize / reflect
+  if (chosen === "explore" && !allowQuestion) {
+    chosen = rotateWithoutQuestion(state);
+  }
+
+  return {
+    act: chosen,
+    allowQuestion: chosen === "explore" ? true : allowQuestion && chosen !== "sit_with",
+    emotion,
+    exemplarTemplateId: opts.exemplarTemplateId,
+    verbatimText: opts.verbatimText,
+    nextState: {
+      ...state,
+      lastBotAct: opts.lastBotAct ?? chosen,
+      covered: withCovered(state, chosen),
+      // turnCount / recentBotTexts / question counters finalized after realize
     },
-    state,
-    "stressed",
-  );
+  };
+}
+
+/** Never emit the same act three turns running; rotate on consecutive repeat. */
+function rotateIfRepeating(act: BotAct, state: DialogueState): BotAct {
+  if (act !== state.lastBotAct) return act;
+  if (act === "normalize_uncertainty") return "sit_with";
+  if (act === "sit_with") return "normalize_uncertainty";
+  if (act === "answer_directly") return "reflect";
+  return rotateWithoutQuestion(state);
+}
+
+function rotateWithoutQuestion(state: DialogueState): BotAct {
+  if (state.facts.length > 0 && state.lastBotAct !== "reflect") {
+    return "reflect";
+  }
+  if (state.lastBotAct !== "normalize_uncertainty") {
+    return "normalize_uncertainty";
+  }
+  return "sit_with";
+}
+
+function emotionToTemplate(emotion: Emotion): string {
+  switch (emotion) {
+    case "sadness":
+      return "sad";
+    case "anxiety":
+      return "anxious";
+    case "stress":
+      return "stressed";
+    case "anger":
+      return "angry";
+    case "grief":
+      return "death";
+    case "happy":
+      return "happy";
+    default:
+      return "prompt_elaborate";
+  }
 }
 
 function templateToAct(templateId: string): BotAct {
   if (
-    templateId === "greeting" ||
-    templateId === "morning" ||
-    templateId === "afternoon" ||
-    templateId === "evening" ||
-    templateId === "night"
+    ["greeting", "morning", "afternoon", "evening", "night"].includes(
+      templateId,
+    )
   ) {
     return "greet";
   }
@@ -169,12 +144,9 @@ function templateToAct(templateId: string): BotAct {
     return "close";
   }
   if (
-    templateId === "sad" ||
-    templateId === "anxious" ||
-    templateId === "stressed" ||
-    templateId === "depressed" ||
-    templateId === "worthless" ||
-    templateId === "scared"
+    ["sad", "anxious", "stressed", "depressed", "worthless", "scared", "angry"].includes(
+      templateId,
+    )
   ) {
     return "validate";
   }
@@ -187,271 +159,283 @@ function templateToAct(templateId: string): BotAct {
   return "validate";
 }
 
+function hasValidated(state: DialogueState): boolean {
+  return state.covered.includes("validate") || state.covered.includes("reflect");
+}
+
+function hasElaborated(state: DialogueState, classification: Classification): boolean {
+  return (
+    classification.userAct === "elaborate" ||
+    state.facts.length > 0 ||
+    state.arc === "understanding" ||
+    state.arc === "supporting"
+  );
+}
+
+/** Earned advice: offer_coping only after validate + elaborate. */
+function canOfferCoping(
+  state: DialogueState,
+  classification: Classification,
+): boolean {
+  return hasValidated(state) && hasElaborated(state, classification);
+}
+
 /**
- * Rule-based content planner: chooses a BotAct, not a reply string.
- * Never selects `close` after emotional disclosure.
- * Never falls through to NO_INFO in emotional context.
+ * Rule-based discourse planner constrained by invariants.
+ * Chooses a BotAct + allowQuestion — never a reply string.
  */
 export function selectDecision(
   classification: Classification,
   state: DialogueState,
   userMessage: string,
 ): PolicyDecision {
+  const emotion =
+    classification.emotion === "off_topic" || classification.emotion === "factual"
+      ? "neutral"
+      : classification.emotion;
+
+  const emotionalDisclosure =
+    classification.userAct === "disclose_feeling" ||
+    classification.userAct === "elaborate" ||
+    classification.userAct === "request_advice" ||
+    classification.userAct === "ask_about_situation" ||
+    classification.userAct === "express_uncertainty" ||
+    EMOTIONAL.has(classification.emotion);
+
+  // --- Reciprocity (highest priority) ---
+
+  if (classification.userAct === "request_advice") {
+    return decide("answer_directly", emotion, state, classification.userAct, {
+      exemplarTemplateId: emotionToTemplate(emotion),
+      forceAllowQuestion: false,
+    });
+  }
+
+  if (classification.userAct === "ask_about_situation") {
+    return decide("reflect", emotion, state, classification.userAct, {
+      exemplarTemplateId: emotionToTemplate(emotion),
+      forceAllowQuestion: false,
+    });
+  }
+
   // Rationale / doubt about previous suggestion
   const rationaleId = lookupRationaleTemplate(
-    state.lastBotAct,
+    resolveSuggestion(state) ?? state.lastBotAct,
     classification.userAct,
   );
   if (rationaleId) {
-    return decision(
+    return decide(
       "explain_rationale",
-      classification.emotion === "neutral" ? "stress" : classification.emotion,
-      {
-        activeFlow: state.activeFlow,
-        phase: state.phase,
-        lastBotAct: state.lastBotAct,
-        facts: state.facts,
-      },
+      emotion === "neutral" ? "stress" : emotion,
       state,
-      rationaleId,
+      classification.userAct,
+      {
+        exemplarTemplateId: rationaleId,
+        forceAllowQuestion: false,
+        lastBotAct: state.lastBotAct,
+      },
     );
+  }
+
+  // Express doubt. Only explain a rationale when there was actually a
+  // suggestion to justify — otherwise we'd defend advice never given.
+  if (classification.userAct === "express_doubt") {
+    const suggestion = resolveSuggestion(state);
+    if (suggestion) {
+      return decide(
+        "explain_rationale",
+        emotion,
+        state,
+        classification.userAct,
+        {
+          exemplarTemplateId: "break_rationale",
+          forceAllowQuestion: false,
+          lastBotAct: suggestion,
+        },
+      );
+    }
+    if (state.facts.length > 0) {
+      return decide("reflect", emotion, state, classification.userAct, {
+        exemplarTemplateId: emotionToTemplate(emotion),
+        forceAllowQuestion: false,
+      });
+    }
+    return decide("validate", emotion, state, classification.userAct, {
+      exemplarTemplateId: emotionToTemplate(emotion),
+    });
+  }
+
+  // --- Earned coping: heard, but the conversation has stopped moving ---
+  // Set lastBotAct to the flow marker so the rationale map can answer a
+  // follow-up "really? why?" about this specific suggestion.
+  if (
+    canOfferCoping(state, classification) &&
+    isStuck(state) &&
+    !state.covered.includes("offer_coping")
+  ) {
+    return decide("offer_coping", emotion, state, classification.userAct, {
+      exemplarTemplateId: "stressed",
+      forceAllowQuestion: false,
+      lastBotAct: "suggested_break",
+    });
+  }
+
+  if (classification.userAct === "express_uncertainty") {
+    return decide(
+      "normalize_uncertainty",
+      emotion,
+      state,
+      classification.userAct,
+      {
+        exemplarTemplateId: "prompt_elaborate",
+        forceAllowQuestion: false,
+      },
+    );
+  }
+
+  if (classification.userAct === "deflect") {
+    return decide("sit_with", emotion, state, classification.userAct, {
+      exemplarTemplateId: "prompt_elaborate",
+      forceAllowQuestion: false,
+    });
   }
 
   // Affirm progress when user acknowledges a reframe
   if (
     AFFIRM_PROGRESS_RE.test(userMessage) &&
     state.lastBotAct !== "none" &&
-    state.activeFlow !== "none"
+    state.arc !== "opening"
   ) {
-    return decision(
-      "affirm_progress",
-      classification.emotion === "neutral" ? "stress" : classification.emotion,
-      {
-        activeFlow: state.activeFlow,
-        phase: state.phase,
-        lastBotAct: "affirm_progress",
-        facts: state.facts,
-      },
-      state,
-      "prompt_elaborate",
-    );
+    return decide("affirm_progress", emotion, state, classification.userAct, {
+      exemplarTemplateId: "prompt_elaborate",
+    });
   }
 
-  const stressHandled = handleStressFlow(classification, state);
-  if (stressHandled) return stressHandled;
-
-  // Start stress support flow
+  // Accept / decline offers after coping was suggested
   if (
-    state.activeFlow === "none" &&
-    (classification.userAct === "disclose_feeling" ||
-      classification.templateId === "stressed" ||
-      (STRESS_EMOTIONS.has(classification.emotion) &&
-        classification.userAct !== "social" &&
-        classification.userAct !== "factual_question"))
+    classification.userAct === "accept_offer" &&
+    (state.lastBotAct === "suggested_break" ||
+      state.lastBotAct === "offer_coping")
   ) {
-    if (
-      classification.emotion === "stress" ||
-      classification.templateId === "stressed"
-    ) {
-      return startStressFlow(state, classification.emotion);
-    }
+    return decide("affirm_progress", emotion, state, classification.userAct, {
+      exemplarTemplateId: "stressed",
+    });
   }
 
-  // Guard: never close after emotional disclosure (the "that's all" bug)
-  const emotionalDisclosure =
-    classification.userAct === "disclose_feeling" ||
-    classification.userAct === "elaborate" ||
-    STRESS_EMOTIONS.has(classification.emotion) ||
-    classification.emotion === "grief" ||
-    classification.emotion === "anger";
-
-  if (classification.templateId === "done" && emotionalDisclosure) {
-    return decision(
-      "validate",
-      classification.emotion === "neutral" ? "sadness" : classification.emotion,
-      {
-        activeFlow: state.activeFlow === "none" ? "none" : state.activeFlow,
-        phase: state.phase,
-        lastBotAct: "validate",
-        facts: state.facts,
-      },
-      state,
-      "sad",
-    );
+  if (classification.userAct === "decline_offer") {
+    return decide("sit_with", emotion, state, classification.userAct, {
+      exemplarTemplateId: "prompt_elaborate",
+      forceAllowQuestion: false,
+    });
   }
 
-  // Social / greeting via template hint
+  // Never close after emotional disclosure
+  if (
+    (classification.templateId === "done" ||
+      classification.templateId === "goodbye") &&
+    emotionalDisclosure
+  ) {
+    return decide("validate", emotion === "neutral" ? "sadness" : emotion, state, classification.userAct, {
+      exemplarTemplateId: "sad",
+    });
+  }
+
+  // Social / greeting
   if (classification.userAct === "social") {
     const tid = classification.templateId ?? "greeting";
     const act = templateToAct(tid);
     if (act === "close" && emotionalDisclosure) {
-      return decision(
-        "explore",
-        "neutral",
-        {
-          activeFlow: state.activeFlow,
-          phase: state.phase,
-          lastBotAct: "explore",
-          facts: state.facts,
-        },
-        state,
-        "prompt_elaborate",
-      );
+      return decide("validate", emotion, state, classification.userAct, {
+        exemplarTemplateId: emotionToTemplate(emotion),
+      });
     }
-    return decision(
-      act,
-      classification.emotion,
-      {
-        activeFlow: state.activeFlow,
-        phase: state.phase,
-        lastBotAct: act,
-        facts: state.facts,
-      },
-      state,
-      tid,
-    );
+    return decide(act, emotion, state, classification.userAct, {
+      exemplarTemplateId: tid,
+      forceAllowQuestion: act === "greet",
+    });
   }
 
-  // Template hint from classifier
+  // First feeling disclosure → validate (with optional invite via allowQuestion)
+  if (classification.userAct === "disclose_feeling") {
+    if (!hasValidated(state)) {
+      return decide("validate", emotion, state, classification.userAct, {
+        exemplarTemplateId:
+          classification.templateId &&
+          ["sad", "anxious", "stressed", "angry", "depressed", "worthless"].includes(
+            classification.templateId,
+          )
+            ? classification.templateId
+            : emotionToTemplate(emotion),
+      });
+    }
+    // Already validated — reflect facts or explore under budget
+    if (state.facts.length > 0) {
+      return decide("reflect", emotion, state, classification.userAct, {
+        exemplarTemplateId: emotionToTemplate(emotion),
+      });
+    }
+    return decide("explore", emotion, state, classification.userAct, {
+      exemplarTemplateId: "prompt_elaborate",
+    });
+  }
+
+  // Elaborate with new content → reflect if facts, else explore
+  if (classification.userAct === "elaborate") {
+    if (state.facts.length > 0 && state.lastBotAct !== "reflect") {
+      return decide("reflect", emotion, state, classification.userAct, {
+        exemplarTemplateId: emotionToTemplate(emotion),
+      });
+    }
+    return decide("explore", emotion, state, classification.userAct, {
+      exemplarTemplateId: "prompt_elaborate",
+    });
+  }
+
+  // Template hint (non-done)
   if (classification.templateId) {
     const act = templateToAct(classification.templateId);
     if (act === "close" && emotionalDisclosure) {
-      return decision(
-        "validate",
-        classification.emotion === "neutral"
-          ? "sadness"
-          : classification.emotion,
-        {
-          activeFlow: state.activeFlow,
-          phase: state.phase,
-          lastBotAct: "validate",
-          facts: state.facts,
-        },
-        state,
-        classification.templateId === "done" ? "sad" : classification.templateId,
-      );
+      return decide("validate", emotion === "neutral" ? "sadness" : emotion, state, classification.userAct, {
+        exemplarTemplateId: "sad",
+      });
     }
-    return decision(
-      act,
-      classification.emotion,
-      {
-        activeFlow: state.activeFlow,
-        phase: state.phase,
-        lastBotAct: act as LastBotAct,
-        facts: state.facts,
-      },
-      state,
-      classification.templateId,
-    );
+    // Never start with offer_coping from stressed template — validate first
+    if (act === "validate" || classification.templateId === "stressed") {
+      if (!hasValidated(state)) {
+        return decide("validate", emotion, state, classification.userAct, {
+          exemplarTemplateId:
+            classification.templateId === "stressed"
+              ? "sad"
+              : classification.templateId,
+        });
+      }
+    }
+    return decide(act, emotion, state, classification.userAct, {
+      exemplarTemplateId: classification.templateId,
+    });
   }
 
-  // Feeling disclosure → validate then explore
-  if (classification.userAct === "disclose_feeling") {
-    const alreadyValidated = state.covered.includes("validate");
-    if (!alreadyValidated) {
-      return decision(
-        "validate",
-        classification.emotion,
-        {
-          activeFlow: state.activeFlow,
-          phase: state.phase === "idle" ? "feeling_disclosed" : state.phase,
-          lastBotAct: "validate",
-          facts: state.facts,
-        },
-        state,
-        emotionToTemplate(classification.emotion),
-      );
-    }
-    return decision(
-      "explore",
-      classification.emotion,
-      {
-        activeFlow: state.activeFlow,
-        phase: "exploring",
-        lastBotAct: "explore",
-        facts: state.facts,
-      },
-      state,
-      "prompt_elaborate",
-    );
-  }
-
-  // Unknown in emotional / mid-flow context → explore, never NO_INFO
+  // Soft emotional unknown → explore under budget, never NO_INFO
   if (
     classification.userAct === "unknown" ||
-    classification.userAct === "elaborate"
+    EMOTIONAL.has(classification.emotion)
   ) {
-    return decision(
-      "explore",
-      classification.emotion === "off_topic" ||
-        classification.emotion === "factual"
-        ? "neutral"
-        : classification.emotion,
-      {
-        activeFlow: state.activeFlow,
-        phase: state.phase === "idle" ? "exploring" : state.phase,
-        lastBotAct: "explore",
-        facts: state.facts,
-      },
-      state,
-      "prompt_elaborate",
-    );
+    if (!hasValidated(state) && EMOTIONAL.has(classification.emotion)) {
+      return decide("validate", emotion, state, classification.userAct, {
+        exemplarTemplateId: emotionToTemplate(emotion),
+      });
+    }
+    return decide("explore", emotion, state, classification.userAct, {
+      exemplarTemplateId: "prompt_elaborate",
+    });
   }
 
-  // Decline / accept outside known flow → explore
-  if (
-    classification.userAct === "decline_offer" ||
-    classification.userAct === "accept_offer"
-  ) {
-    return decision(
-      "explore",
-      classification.emotion,
-      {
-        activeFlow: state.activeFlow,
-        phase: state.phase,
-        lastBotAct: "explore",
-        facts: state.facts,
-      },
-      state,
-      "prompt_elaborate",
-    );
-  }
-
-  // Final soft fallback — still explore, never knowledge-base refusal
-  return decision(
-    "explore",
-    "neutral",
-    {
-      activeFlow: state.activeFlow,
-      phase: state.phase,
-      lastBotAct: "explore",
-      facts: state.facts,
-    },
-    state,
-    "prompt_elaborate",
-  );
+  return decide("explore", "neutral", state, classification.userAct, {
+    exemplarTemplateId: "prompt_elaborate",
+  });
 }
 
-function emotionToTemplate(emotion: Emotion): string {
-  switch (emotion) {
-    case "sadness":
-      return "sad";
-    case "anxiety":
-      return "anxious";
-    case "stress":
-      return "stressed";
-    case "anger":
-      return "default";
-    case "grief":
-      return "death";
-    case "happy":
-      return "happy";
-    default:
-      return "prompt_elaborate";
-  }
-}
-
-/** @deprecated Use selectDecision — kept for gradual test migration. */
+/** @deprecated Use selectDecision */
 export function selectResponse(
   classification: Classification,
   state: DialogueState,

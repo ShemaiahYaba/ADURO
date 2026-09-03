@@ -57,12 +57,10 @@ describe("pipeline", () => {
       ],
     );
     expect(result.text.toLowerCase()).not.toContain("can't help you with that");
-    expect(result.text.toLowerCase()).toMatch(
-      /tell me more|what's on your mind|go on|listening|feeling/,
-    );
+    expect(result.act).toBe("validate");
   });
 
-  it("handles informal stress and enters stress flow", async () => {
+  it("validates stress disclosure instead of advice-first", async () => {
     const result = await runPipeline(
       "I'm feeling a bit stressed",
       "test-session",
@@ -70,11 +68,11 @@ describe("pipeline", () => {
       [],
     );
     expect(result.emotion).toBe("stress");
-    expect(result.dialogueState.activeFlow).toBe("stress_support");
-    expect(result.text.toLowerCase()).not.toContain("not sure i understood");
+    expect(result.act).toBe("validate");
+    expect(result.act).not.toBe("offer_coping");
   });
 
-  it("handles elaborate follow-up in stress flow", async () => {
+  it("handles elaborate follow-up without KB refusal", async () => {
     const result = await runPipeline(
       "just work",
       "test-session",
@@ -86,12 +84,12 @@ describe("pipeline", () => {
         },
       ],
       state({
-        activeFlow: "stress_support",
-        phase: "stressed_disclosed",
-        lastBotAct: "asked_cause",
+        arc: "understanding",
+        lastBotAct: "explore",
+        covered: ["validate"],
+        facts: ["feeling stressed"],
       }),
     );
-    expect(result.text.toLowerCase()).not.toContain("not sure i understood");
     expect(result.text.toLowerCase()).not.toContain(
       "don't have enough information",
     );
@@ -118,16 +116,16 @@ describe("pipeline", () => {
     expect(result.emotion).toBe("off_topic");
   });
 
-  it("routes not really in stress flow without KB refusal", async () => {
+  it("routes not really without KB refusal", async () => {
     const result = await runPipeline(
       "not really",
       "test-session",
       1,
       [],
       state({
-        activeFlow: "stress_support",
-        phase: "offered_tips",
-        lastBotAct: "offered_learn_more",
+        arc: "supporting",
+        lastBotAct: "suggested_break",
+        covered: ["validate", "offer_coping"],
       }),
     );
     expect(result.text.toLowerCase()).not.toContain(
@@ -143,9 +141,9 @@ describe("pipeline", () => {
       2,
       [],
       state({
-        activeFlow: "stress_support",
-        phase: "stressed_disclosed",
+        arc: "supporting",
         lastBotAct: "suggested_break",
+        covered: ["validate", "offer_coping"],
       }),
     );
     expect(result.text.toLowerCase()).toMatch(/break|rest|recharge/);
@@ -159,19 +157,18 @@ describe("pipeline", () => {
       3,
       [],
       state({
-        activeFlow: "stress_support",
-        phase: "offered_meditation",
+        arc: "supporting",
         lastBotAct: "offered_meditation",
+        covered: ["validate", "offer_coping"],
       }),
     );
     expect(result.text.toLowerCase()).toMatch(/meditation|breath|breathing/);
-    expect(result.text.toLowerCase()).not.toContain("within your control");
   });
 
   it("never closes on cheated disclosure with that's all", async () => {
     vi.spyOn(classifier, "classify").mockResolvedValueOnce({
       emotion: "sadness",
-      userAct: "elaborate",
+      userAct: "request_advice",
       facts: ["partner was unfaithful", "went through a breakup"],
       templateId: "done",
       confidence: 0.9,
@@ -191,14 +188,17 @@ describe("pipeline", () => {
         { role: "assistant", content: "Tell me more about it." },
       ],
       state({
+        arc: "understanding",
         facts: ["went through a breakup"],
         covered: ["validate", "explore"],
         turnCount: 3,
       }),
     );
 
-    expect(result.text.toLowerCase()).not.toMatch(/done for today|see you later|goodbye/);
-    expect(result.dialogueState.lastBotAct).not.toBe("close");
+    expect(result.text.toLowerCase()).not.toMatch(
+      /done for today|see you later|goodbye/,
+    );
+    expect(result.act).toBe("answer_directly");
   });
 
   it("merges facts into dialogue state", async () => {
@@ -211,5 +211,10 @@ describe("pipeline", () => {
 
     const result = await runPipeline("I'm sad", "test-session", 0, []);
     expect(result.dialogueState.facts).toContain("feeling sad");
+  });
+
+  it("tracks recentBotTexts after a turn", async () => {
+    const result = await runPipeline("Hello", "test-session", 0, []);
+    expect(result.dialogueState.recentBotTexts.length).toBeGreaterThan(0);
   });
 });

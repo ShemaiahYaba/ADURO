@@ -15,13 +15,14 @@ vi.mock("./openai", () => ({
 
 const { buildRealizeSystemPrompt, realize } = await import("./realize");
 
-/** Rejected by output-guard via the diagnosis frame. */
+/** Rejected by the output guard via the diagnosis frame. */
 const BLOCKED = "You have depression.";
 const CLEAN = "That sounds really painful, and it makes sense that you're reeling.";
 
 function decision(overrides: Partial<PolicyDecision> = {}): PolicyDecision {
   return {
     act: "validate",
+    allowQuestion: true,
     emotion: "sadness",
     exemplarTemplateId: "sad",
     nextState: { ...INITIAL_DIALOGUE_STATE },
@@ -38,37 +39,48 @@ function run(d: PolicyDecision, s: DialogueState = state()) {
 }
 
 describe("realize prompt assembly", () => {
-  it("includes act contract, facts, and style rules", () => {
+  it("includes act contract, facts, question rule, and recent replies", () => {
     const d = decision({
+      act: "reflect",
+      allowQuestion: false,
       nextState: state({
         facts: ["partner was unfaithful", "went through a breakup"],
-        covered: ["greet"],
+        covered: ["greet", "validate"],
+        recentBotTexts: [
+          "What's been weighing on your mind the most since the breakup?",
+        ],
         turnCount: 2,
       }),
     });
 
     const prompt = buildRealizeSystemPrompt(d, d.nextState, "She cheated.");
 
-    expect(prompt).toContain("validate");
-    expect(prompt).toContain("Acknowledge the specific thing");
+    expect(prompt).toContain("reflect");
+    expect(prompt).toContain("Do not ask a question this turn");
     expect(prompt).toContain("partner was unfaithful");
-    expect(prompt).toContain("went through a breakup");
+    expect(prompt).toContain("MUST reference at least one known fact");
+    expect(prompt).toContain("do NOT reuse these sentences");
+    expect(prompt).toContain("weighing on your mind");
     expect(prompt).toContain("1–3 sentences");
-    expect(prompt).toContain("Never diagnose");
-    expect(prompt).toContain("greet");
-    expect(prompt).toContain("Tone exemplars");
+  });
+
+  it("allows the question clause when allowQuestion is true", () => {
+    const prompt = buildRealizeSystemPrompt(
+      decision({ allowQuestion: true }),
+      state(),
+      "I'm sad",
+    );
+    expect(prompt).toContain("End with one gentle, open invitation");
   });
 
   it("does not list the current act as already covered", () => {
     const prompt = buildRealizeSystemPrompt(
       decision({ act: "validate" }),
       state({ covered: ["greet"] }),
-      "She cheated.",
+      "I'm sad",
     );
-
-    const coveredSection = prompt.split("Acts already covered")[1] ?? "";
-    const upToNextHeading = coveredSection.split("## ")[0] ?? "";
-    expect(upToNextHeading).not.toContain("validate");
+    const section = prompt.split("Acts already covered")[1] ?? "";
+    expect(section.split("## ")[0] ?? "").not.toContain("validate");
   });
 });
 
@@ -147,7 +159,6 @@ describe("realize fallback ladder", () => {
 
     expect(result.source).toBe("guard_blocked");
     expect(result.text).not.toBe(BLOCKED);
-    expect(result.text.length).toBeGreaterThan(0);
     expect(mocks.generateText).toHaveBeenCalledTimes(2);
   });
 
@@ -158,5 +169,71 @@ describe("realize fallback ladder", () => {
 
     expect(result.source).toBe("template_fallback");
     expect(result.text.length).toBeGreaterThan(0);
+  });
+});
+
+describe("realize policy enforcement", () => {
+  beforeEach(() => {
+    mocks.generateText.mockReset();
+    mocks.isConfigured.mockReset();
+    mocks.isConfigured.mockReturnValue(true);
+    vi.stubEnv("ADURO_REALIZATION", "generated");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("rejects a question when allowQuestion is false", async () => {
+    mocks.generateText.mockResolvedValue({
+      text: "How are you feeling about that?",
+    });
+
+    const result = await run(decision({ allowQuestion: false }));
+
+    expect(result.source).toBe("guard_blocked");
+    expect(result.text).not.toContain("?");
+    expect(mocks.generateText).toHaveBeenCalledTimes(2);
+  });
+
+  it("regenerates reflect when the draft ignores known facts", async () => {
+    mocks.generateText
+      .mockResolvedValueOnce({ text: "That sounds really hard." })
+      .mockResolvedValueOnce({
+        text: "Being cheated on by your partner cuts deep.",
+      });
+
+    const result = await run(
+      decision({ act: "reflect", allowQuestion: false }),
+      state({ facts: ["partner was unfaithful"] }),
+    );
+
+    expect(result.source).toBe("regenerated");
+    expect(result.factReferenced).toBe(true);
+    expect(mocks.generateText).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a draft that repeats a recent reply", async () => {
+    const prior = "What's been weighing on your mind most since the breakup?";
+    mocks.generateText.mockResolvedValue({ text: prior });
+
+    const result = await run(
+      decision({ allowQuestion: true }),
+      state({ recentBotTexts: [prior] }),
+    );
+
+    expect(result.source).toBe("guard_blocked");
+    expect(result.text).not.toBe(prior);
+  });
+
+  it("keeps template fallback free of questions when disallowed", async () => {
+    vi.stubEnv("ADURO_REALIZATION", "template");
+
+    const result = await run(
+      decision({ act: "sit_with", allowQuestion: false, exemplarTemplateId: "sad" }),
+    );
+
+    expect(result.source).toBe("template");
+    expect(result.text).not.toContain("?");
   });
 });

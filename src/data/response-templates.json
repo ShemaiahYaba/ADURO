@@ -212,6 +212,21 @@
         "I don't have anyone"
       ]
     },
+    "angry": {
+      "emotion": "anger",
+      "responses": [
+        "That sounds really frustrating — you have every right to feel angry about that.",
+        "I hear how mad this has made you. Anger often shows up when something important was violated.",
+        "Of course you're angry. What happened cut deep, and that reaction makes sense."
+      ],
+      "patterns": [
+        "I am so angry",
+        "I feel furious",
+        "I'm pissed off",
+        "I am mad",
+        "That makes me so angry"
+      ]
+    },
     "stressed": {
       "emotion": "stress",
       "responses": [

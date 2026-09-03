@@ -20,6 +20,10 @@ export type UserAct =
   | "express_doubt"
   | "factual_question"
   | "social"
+  | "request_advice"
+  | "ask_about_situation"
+  | "express_uncertainty"
+  | "deflect"
   | "unknown";
 
 /** Policy decision — what the bot should do this turn. */
@@ -31,12 +35,22 @@ export type BotAct =
   | "offer_coping"
   | "explain_rationale"
   | "affirm_progress"
+  | "answer_directly"
+  | "normalize_uncertainty"
+  | "sit_with"
   | "answer_fact"
   | "close";
 
+export type DialogueArc =
+  | "opening"
+  | "surfacing"
+  | "understanding"
+  | "supporting"
+  | "closing";
+
 /**
- * Flow markers plus BotActs. Flow markers track stress-support phase
- * for rationale lookup; BotActs track what the realization layer did.
+ * Flow markers retained for rationale lookup when offering coping,
+ * plus BotActs.
  */
 export type LastBotAct =
   | BotAct
@@ -67,27 +81,46 @@ export type Classification = {
 };
 
 export type DialogueState = {
-  activeFlow: "none" | "stress_support";
-  phase: string;
+  arc: DialogueArc;
   lastBotAct: LastBotAct;
-  /** Salient user-disclosed content, max 8, FIFO. */
   facts: string[];
-  /** Acts already performed this conversation. */
   covered: BotAct[];
   turnCount: number;
+  /** Bot's own recent replies, newest last, cap 3. */
+  recentBotTexts: string[];
+  /** A question the bot asked that the user has not answered. */
+  openQuestion: string | null;
+  /** Consecutive bot turns containing a question. */
+  consecutiveQuestions: number;
+  /** Consecutive user non-answers (uncertainty or deflection). */
+  consecutiveNonAnswers: number;
+  /** Consecutive turns that surfaced no new facts. Gates earned coping. */
+  stuckTurns: number;
+  /**
+   * The last suggestion the bot made, if any. Separate from `lastBotAct`
+   * because doubt often arrives a turn or two after the suggestion.
+   */
+  lastSuggestion: LastBotAct | null;
 };
 
 export const INITIAL_DIALOGUE_STATE: DialogueState = {
-  activeFlow: "none",
-  phase: "idle",
+  arc: "opening",
   lastBotAct: "none",
   facts: [],
   covered: [],
   turnCount: 0,
+  recentBotTexts: [],
+  openQuestion: null,
+  consecutiveQuestions: 0,
+  consecutiveNonAnswers: 0,
+  stuckTurns: 0,
+  lastSuggestion: null,
 };
 
 export type PolicyDecision = {
   act: BotAct;
+  /** Whether realization may end with one gentle question. */
+  allowQuestion: boolean;
   exemplarTemplateId?: string;
   emotion: Emotion;
   nextState: DialogueState;
@@ -118,6 +151,11 @@ export type PipelineResult = {
   emotion: Emotion;
   dialogueState: DialogueState;
   source?: RealizationSource;
+  /** Whether the reply referenced a known fact (metric). */
+  factReferenced?: boolean;
+  /** Policy act chosen this turn (for logs / harness). */
+  act?: BotAct;
+  allowQuestion?: boolean;
 };
 
 export type ChatMessage = {

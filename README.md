@@ -7,18 +7,21 @@ Emotion-aware mental health support chatbot. Classifies user messages with emoti
 ```
 Safety (deterministic)
   → Understanding (emotion + userAct + facts)
-  → Dialogue policy (BotAct selection — rule-based)
+  → Discourse (arc, question budget, non-answers)
+  → Dialogue policy (BotAct + allowQuestion — rule-based invariants)
   → Realization (constrained LLM write, or template fallback)
-  → Output guard (deterministic clinical/format scan)
+  → Output guard (clinical/format/repetition scan)
 ```
 
 - **Safety** runs on the latest message only (crisis, diagnosis, off-topic)
-- **Classifier** detects emotion, user act, and short factual fragments about the user's situation
-- **Dialogue policy** chooses a `BotAct` (`validate`, `explore`, `offer_coping`, …) from state — inspectable and unit-tested
-- **Realization** writes 1–3 sentences under an act contract + facts + style rules; templates are exemplars and fallbacks, not the only output
-- **Output guard** blocks diagnosis frames, medication mentions, unapproved helplines, and format violations
+- **Classifier** detects emotion, user act (including advice requests, uncertainty, deflection), and salient facts
+- **Discourse** tracks conversation arc, consecutive questions, and non-answers
+- **Dialogue policy** chooses a `BotAct` under invariants: question budget, earned advice, reciprocity, no close-after-disclosure
+- **Realization** writes 1–3 sentences under an act contract + facts + anti-repetition; `allowQuestion` composes validate+invite in one turn
+- **Output guard** blocks diagnosis frames, medication, unapproved helplines, format violations, and near-duplicate replies
 
-Response *selection* (what to do) is rule-based. Surface *realization* (how to say it) may use LLM-assisted generation bounded by that policy. Emotion detection may use ML (survey-trained) or LLM-assisted classification.
+Response *selection* (what to do) is rule-based. Surface *realization* (how to say it) may use LLM-assisted generation bounded by that policy.
+
 
 ## Quick start
 
@@ -71,12 +74,15 @@ ADURO_REALIZATION=template
 
 The client round-trips `dialogueState` with each message:
 
-- `activeFlow` / `phase` / `lastBotAct` — multi-turn policy
+- `arc` — opening → surfacing → understanding → supporting → closing
+- `lastBotAct` / `covered` — policy memory
 - `facts` — salient user disclosures (max 8, FIFO); cleared on refresh
-- `covered` — bot acts already performed this conversation
-- `turnCount` — turn index
+- `recentBotTexts` — last 3 bot replies for anti-repetition
+- `consecutiveQuestions` / `consecutiveNonAnswers` / `openQuestion` — discourse budgets
 
 Refreshing the page resets the flow and facts.
+
+See [docs/PHASE-4-PLAN.md](docs/PHASE-4-PLAN.md) for the discourse-layer design and [docs/PHASE-3-PLAN.md](docs/PHASE-3-PLAN.md) for constrained generation.
 
 ## Privacy
 

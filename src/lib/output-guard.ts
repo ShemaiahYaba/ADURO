@@ -2,25 +2,22 @@ import { HELPLINES } from "./constants";
 
 export type GuardResult = { ok: true } | { ok: false; reason: string };
 
+export type GuardContext = {
+  recentBotTexts?: string[];
+};
+
 const APPROVED_NUMBERS = new Set(
   Object.values(HELPLINES).map((h) => h.number.replace(/\s+/g, "")),
 );
 
 const DISORDER = String.raw`(?:depression|depressive\s+disorder|anxiety\s+disorder|generali[sz]ed\s+anxiety|bipolar(?:\s+disorder)?|ptsd|ocd|schizophrenia|adhd|mental\s+illness|disorder)`;
 
-/**
- * A diagnosis needs a diagnostic frame AND a named condition. Matching the
- * frame alone rejects ordinary validation — "you have every right to feel
- * hurt", "you have been through a lot" — which are the phrasings this domain
- * leans on most.
- */
 const DIAGNOSIS_FRAME = new RegExp(
   String.raw`\byou\s+(?:have|might\s+have|may\s+have|probably\s+have|likely\s+have|do\s+have|are\s+suffering\s+from|suffer\s+from|'?re\s+dealing\s+with)\s+(?:a\s+|an\s+|some\s+|clinical\s+)?(?:\w+\s+){0,2}` +
     DISORDER,
   "i",
 );
 
-/** Direct labelling: "you're depressed", "you sound bipolar". */
 const DIAGNOSIS_LABEL =
   /\byou(?:\s+are|'?re|\s+sound|\s+seem|\s+must\s+be)\s+(?:clinically\s+)?(?:depressed|bipolar|schizophrenic|psychotic|mentally\s+ill)\b/i;
 
@@ -34,6 +31,36 @@ const PHONE_SHAPE = /(?:\+?\d[\d\s\-()]{7,}\d)/g;
 const MARKDOWN_LIST = /^[\s]*[-*+]\s+/m;
 const MARKDOWN_HEADING = /^#{1,6}\s+/m;
 
+const STOPWORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "to",
+  "of",
+  "and",
+  "or",
+  "is",
+  "it",
+  "in",
+  "on",
+  "for",
+  "you",
+  "your",
+  "i",
+  "me",
+  "my",
+  "that",
+  "this",
+  "with",
+  "be",
+  "as",
+  "at",
+  "do",
+  "are",
+  "was",
+  "were",
+]);
+
 function sentenceCount(text: string): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;
@@ -45,11 +72,39 @@ function normalizePhone(raw: string): string {
   return raw.replace(/\s+/g, "").replace(/[()\-]/g, "");
 }
 
+/** Tokenize for Jaccard similarity (anti-repetition). */
+export function normalizeTokens(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^\w\s']/g, " ")
+      .split(/\s+/)
+      .filter((t) => t.length > 1 && !STOPWORDS.has(t)),
+  );
+}
+
+export function jaccardSimilarity(a: string, b: string): number {
+  const ta = normalizeTokens(a);
+  const tb = normalizeTokens(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let inter = 0;
+  for (const t of ta) {
+    if (tb.has(t)) inter += 1;
+  }
+  const union = ta.size + tb.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+const REPETITION_THRESHOLD = 0.8;
+
 /**
  * Deterministic post-generation safety scan.
- * Rejects clinical language, format violations, and unapproved helplines.
+ * Rejects clinical language, format violations, unapproved helplines, and near-duplicates.
  */
-export function checkOutput(text: string): GuardResult {
+export function checkOutput(
+  text: string,
+  ctx?: GuardContext,
+): GuardResult {
   const trimmed = text.trim();
 
   if (!trimmed) {
@@ -80,8 +135,6 @@ export function checkOutput(text: string): GuardResult {
     return { ok: false, reason: "medication" };
   }
 
-  // Bare condition names are fine ("depression is common"); asserting a
-  // clinical judgement is not.
   if (/\bclinically\b/i.test(trimmed) || /\bdiagnos(e|is|ed|ing)\b/i.test(trimmed)) {
     return { ok: false, reason: "clinical_claim" };
   }
@@ -101,5 +154,29 @@ export function checkOutput(text: string): GuardResult {
     }
   }
 
+  const recent = ctx?.recentBotTexts ?? [];
+  for (const prev of recent) {
+    if (jaccardSimilarity(trimmed, prev) >= REPETITION_THRESHOLD) {
+      return { ok: false, reason: "repetition" };
+    }
+  }
+
   return { ok: true };
+}
+
+/** True if text shares a content token with any fact fragment. */
+export function referencesFact(text: string, facts: string[]): boolean {
+  if (facts.length === 0) return false;
+  const textTokens = normalizeTokens(text);
+  for (const fact of facts) {
+    const factTokens = normalizeTokens(fact);
+    for (const t of factTokens) {
+      if (textTokens.has(t)) return true;
+    }
+  }
+  return false;
+}
+
+export function containsQuestion(text: string): boolean {
+  return text.includes("?");
 }

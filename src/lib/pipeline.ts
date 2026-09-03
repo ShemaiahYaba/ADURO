@@ -1,5 +1,10 @@
 import { classify, mergeFacts } from "./classifier";
 import { selectDecision } from "./dialogue-policy";
+import {
+  finalizeDiscourseAfterBot,
+  normalizeDialogueState,
+  updateDiscourseFromUser,
+} from "./discourse";
 import { retrieveFact } from "./knowledge-base";
 import { realize } from "./realize";
 import { checkSafety } from "./safety";
@@ -11,19 +16,7 @@ import type {
 } from "./types";
 import { INITIAL_DIALOGUE_STATE } from "./types";
 
-export function normalizeDialogueState(
-  state?: DialogueState | null,
-): DialogueState {
-  if (!state) return { ...INITIAL_DIALOGUE_STATE };
-  return {
-    activeFlow: state.activeFlow ?? "none",
-    phase: state.phase ?? "idle",
-    lastBotAct: state.lastBotAct ?? "none",
-    facts: Array.isArray(state.facts) ? state.facts.slice(-8) : [],
-    covered: Array.isArray(state.covered) ? state.covered : [],
-    turnCount: typeof state.turnCount === "number" ? state.turnCount : 0,
-  };
-}
+export { normalizeDialogueState } from "./discourse";
 
 function withMergedFacts(
   state: DialogueState,
@@ -55,44 +48,40 @@ export async function runPipeline(
   }
 
   const classification = await classify(message, history, state);
+  const factCountBefore = state.facts.length;
   state = withMergedFacts(state, classification.facts);
+  const gotNewFacts = state.facts.length > factCountBefore;
+  state = updateDiscourseFromUser(state, classification, gotNewFacts);
 
-  // Factual Q&A when not mid emotional flow
+  // Factual Q&A early in opening only
   if (
     classification.userAct === "factual_question" &&
-    state.activeFlow === "none"
+    state.arc === "opening"
   ) {
     const fact = await retrieveFact(message);
     if (fact) {
-      const decision: PolicyDecision = {
-        act: "answer_fact",
-        emotion: fact.emotion,
-        nextState: {
-          ...state,
-          lastBotAct: "answer_fact",
-          turnCount: state.turnCount + 1,
-        },
-        verbatimText: fact.text,
-      };
+      const next = finalizeDiscourseAfterBot(
+        { ...state, lastBotAct: "answer_fact" },
+        fact.text,
+        "answer_fact",
+      );
       return {
         text: fact.text,
         emotion: fact.emotion,
-        dialogueState: decision.nextState,
+        dialogueState: next,
         source: "kb",
+        act: "answer_fact",
+        allowQuestion: false,
+        factReferenced: false,
       };
     }
-    // Soft: treat unknown facts as explore if message has feeling words
-    if (
-      /\b(feel|feeling|sad|anxious|stress|hurt|heart)\b/i.test(message)
-    ) {
-      // fall through to policy
-    } else {
+    if (!/\b(feel|feeling|sad|anxious|stress|hurt|heart)\b/i.test(message)) {
       const decision = selectDecision(
         { ...classification, userAct: "unknown" },
         state,
         message,
       );
-      const realized = await realize(
+      return finalizeTurn(
         decision,
         state,
         message,
@@ -100,26 +89,16 @@ export async function runPipeline(
         sessionId,
         messageIndex,
       );
-      return {
-        text: realized.text,
-        emotion: decision.emotion,
-        dialogueState: decision.nextState,
-        source: realized.source,
-      };
     }
   }
 
   const decision = selectDecision(classification, state, message);
-  // Carry merged facts into next state
   decision.nextState = {
     ...decision.nextState,
     facts: state.facts,
   };
 
-  // Realization reads the pre-decision state: `nextState.covered` already
-  // contains the act being performed, which would tell the model not to
-  // repeat the very move it was just asked to make.
-  const realized = await realize(
+  return finalizeTurn(
     decision,
     state,
     message,
@@ -127,11 +106,61 @@ export async function runPipeline(
     sessionId,
     messageIndex,
   );
+}
+
+async function finalizeTurn(
+  decision: PolicyDecision,
+  stateBefore: DialogueState,
+  message: string,
+  history: ChatTurn[],
+  sessionId: string,
+  messageIndex: number,
+): Promise<PipelineResult> {
+  // Realization reads pre-decision covered (without this turn's act)
+  const realized = await realize(
+    decision,
+    stateBefore,
+    message,
+    history,
+    sessionId,
+    messageIndex,
+  );
+
+  let nextState = finalizeDiscourseAfterBot(
+    {
+      ...decision.nextState,
+      facts: stateBefore.facts,
+      // Use pre-realize covered so finalize adds the act once
+      covered: stateBefore.covered,
+      consecutiveQuestions: stateBefore.consecutiveQuestions,
+      consecutiveNonAnswers: stateBefore.consecutiveNonAnswers,
+      recentBotTexts: stateBefore.recentBotTexts,
+      openQuestion: stateBefore.openQuestion,
+      arc: stateBefore.arc,
+      stuckTurns: stateBefore.stuckTurns,
+    },
+    realized.text,
+    decision.act,
+  );
+
+  // Preserve lastBotAct override for rationale (e.g. suggested_break)
+  if (
+    decision.nextState.lastBotAct !== decision.act &&
+    decision.nextState.lastBotAct !== "none"
+  ) {
+    nextState = {
+      ...nextState,
+      lastBotAct: decision.nextState.lastBotAct,
+    };
+  }
 
   return {
     text: realized.text,
     emotion: decision.emotion,
-    dialogueState: decision.nextState,
+    dialogueState: nextState,
     source: realized.source,
+    factReferenced: realized.factReferenced,
+    act: decision.act,
+    allowQuestion: decision.allowQuestion,
   };
 }

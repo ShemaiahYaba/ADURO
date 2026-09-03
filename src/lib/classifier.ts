@@ -1,7 +1,10 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { ROUTER_MIN_CONFIDENCE } from "./constants";
-import { classifyOffline, inferStressFlowUserAct } from "./classifier-offline";
+import {
+  classifyOffline,
+  inferContextualUserAct,
+} from "./classifier-offline";
 import { isOpenAiConfigured, routerModel } from "./openai";
 import { getAllTemplates } from "./templates";
 import type {
@@ -35,6 +38,10 @@ const userActSchema = z.enum([
   "express_doubt",
   "factual_question",
   "social",
+  "request_advice",
+  "ask_about_situation",
+  "express_uncertainty",
+  "deflect",
   "unknown",
 ]);
 
@@ -62,31 +69,33 @@ Infer emotion, userAct, facts, and optionally templateId from the latest user me
 Never diagnose. Never refuse in-scope emotional conversation as off_topic.
 
 userAct meanings:
-- social: greetings (including informal "heyyy aduro"), thanks, goodbye, small talk, bot questions
-- disclose_feeling: shares or hints at feelings ("I'm sad", "there's something", "not great")
-- elaborate: explains context when continuing a conversation (breakup, work stress, family, etc.)
+- social: greetings, thanks, goodbye, small talk
+- disclose_feeling: shares or hints at feelings
+- elaborate: explains context (breakup, work, family) — NOT when they ask you something
+- request_advice: asks what they should do / what you think they should do
+- ask_about_situation: asks why something happened that you cannot know ("why did she cheat")
+- express_uncertainty: "i don't know", "not sure", "i'm not exactly sure"
+- deflect: humour or topic-shift under pressure ("ice cream i guess")
 - accept_offer / decline_offer: yes/no to a bot suggestion
-- ask_rationale: asks why (why meditation, why rest)
+- ask_rationale: asks why the bot suggested something (why meditation, why rest)
 - express_doubt: skeptical (are you sure, really?)
 - factual_question: mental health definition or fact question
 - unknown: only when genuinely ambiguous after reading context
 
 facts:
-- Extract at most 3 short factual fragments the user disclosed THIS turn, in third person, no interpretation.
-- Examples: "broke up with partner", "partner was unfaithful", "feeling anxious without clear cause"
+- Extract at most 3 short factual fragments the user disclosed THIS turn, in third person.
+- Examples: "broke up with partner", "partner was unfaithful"
 - Return [] if none. Do not invent.
 
 Guidelines:
-- Read the full thread. Short replies often respond to the bot's last turn.
-- "I'm good" after a greeting is social/happy, not off_topic.
-- "but there's something though" after small talk is disclose_feeling.
-- Elongated greetings ("heyyy", "hiiii") with or without "aduro" are social.
-- In an active support flow, prefer elaborate/accept/decline over unknown.
-- Use off_topic only for clearly unrelated topics (sports scores, homework, recipes).
-- templateId is optional; suggest one only when a canned template clearly fits (e.g. greeting, stressed, sad, happy).
-- NEVER suggest templateId "done" when the user is still sharing emotional content, even if they say "that's all".
+- Prefer request_advice over elaborate when they ask what to do.
+- Prefer ask_about_situation when they ask why someone else did something.
+- Prefer express_uncertainty for "i don't know" / "not sure" answers.
+- Prefer deflect for joke/non-sequitur answers to serious questions.
+- NEVER suggest templateId "done" when the user is still sharing emotional content.
+- Use off_topic only for clearly unrelated topics (sports, recipes, homework).
 
-Dialogue state: flow=${state.activeFlow}, phase=${state.phase}, lastBotAct=${state.lastBotAct}
+Dialogue state: arc=${state.arc}, lastBotAct=${state.lastBotAct}, consecutiveQuestions=${state.consecutiveQuestions}
 
 Known templateIds: ${templateHintList()}`;
 }
@@ -119,24 +128,16 @@ function normalizeLlmClassification(
   let userAct = output.userAct as UserAct;
   const facts = normalizeFacts(output.facts);
 
-  if (state.activeFlow === "stress_support") {
-    const flowAct = inferStressFlowUserAct(message, state.lastBotAct);
+  // Contextual override for short replies mid-conversation
+  if (state.arc !== "opening" && message.trim().split(/\s+/).length <= 12) {
+    const contextual = inferContextualUserAct(message, state.lastBotAct);
     if (
-      userAct === "factual_question" ||
-      userAct === "unknown" ||
-      userAct === "social" ||
-      emotion === "factual" ||
-      emotion === "off_topic"
+      contextual !== "elaborate" &&
+      (userAct === "unknown" ||
+        userAct === "social" ||
+        userAct === "factual_question")
     ) {
-      userAct = flowAct;
-      emotion = "stress";
-    }
-  } else if (state.activeFlow !== "none") {
-    if (userAct === "unknown") {
-      userAct = "elaborate";
-    }
-    if (emotion === "off_topic") {
-      emotion = "neutral";
+      userAct = contextual;
     }
   }
 
@@ -145,19 +146,12 @@ function normalizeLlmClassification(
     emotion = "neutral";
   }
 
-  if (
-    userAct === "unknown" &&
-    (emotion === "neutral" || emotion === "happy" || emotion === "sadness")
-  ) {
-    userAct = "disclose_feeling";
-  }
-
-  // Block "done" template on emotional content
   let templateId = output.templateId;
   if (
     templateId === "done" &&
     (userAct === "disclose_feeling" ||
       userAct === "elaborate" ||
+      userAct === "request_advice" ||
       emotion === "sadness" ||
       emotion === "stress" ||
       emotion === "anxiety" ||
@@ -204,44 +198,21 @@ async function classifyWithLlm(
   return normalizeLlmClassification(output, state, message);
 }
 
-function applyActiveFlowContext(
-  classification: Classification,
-  message: string,
-  state: DialogueState,
-): Classification {
-  if (state.activeFlow !== "stress_support") {
-    return classification;
-  }
-
-  const flowAct = inferStressFlowUserAct(message, state.lastBotAct);
-  return {
-    ...classification,
-    emotion: "stress",
-    userAct: flowAct,
-  };
-}
-
 export async function classify(
   message: string,
   history: ChatTurn[],
   state: DialogueState,
 ): Promise<Classification> {
-  let classification: Classification;
-
   if (isOpenAiConfigured()) {
     try {
-      classification = await classifyWithLlm(message, history, state);
+      return await classifyWithLlm(message, history, state);
     } catch {
-      classification = classifyOffline(message, state);
+      return classifyOffline(message, state);
     }
-  } else {
-    classification = classifyOffline(message, state);
   }
-
-  return applyActiveFlowContext(classification, message, state);
+  return classifyOffline(message, state);
 }
 
-/** Merge new facts into dialogue state (dedupe, cap 8, FIFO). */
 export function mergeFacts(
   existing: string[],
   incoming: string[],
