@@ -36,6 +36,7 @@ export function Chat({ nickname }: ChatProps) {
     INITIAL_DIALOGUE_STATE,
   );
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const messageIndexRef = useRef(0);
 
   useEffect(() => {
@@ -45,6 +46,12 @@ export function Chat({ nickname }: ChatProps) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    if (!isTyping) {
+      inputRef.current?.focus();
+    }
+  }, [isTyping, messages.length]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -61,6 +68,8 @@ export function Chat({ nickname }: ChatProps) {
     setInput("");
     setPendingDelivered(true);
     setIsTyping(true);
+    // Keep focus ready for the next message once the reply finishes.
+    queueMicrotask(() => inputRef.current?.focus());
 
     const history = messages.slice(-6).map((m) => ({
       role: m.role,
@@ -131,8 +140,8 @@ export function Chat({ nickname }: ChatProps) {
   const lastUserId = [...messages].reverse().find((m) => m.role === "user")?.id;
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[var(--background)]">
-      <header className="flex items-center gap-3 border-b border-[var(--surface-elevated)] bg-[var(--surface)] px-4 py-3">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[var(--background)]">
+      <header className="sticky top-0 z-20 flex shrink-0 items-center gap-3 border-b border-[var(--surface-elevated)] bg-[var(--surface)] px-4 py-3">
         <EmotionOrb emotion={emotion} />
         <div>
           <h1 className="font-semibold">Aduro</h1>
@@ -140,7 +149,7 @@ export function Chat({ nickname }: ChatProps) {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto flex max-w-lg flex-col gap-3">
           {messages.length === 0 && (
             <p className="text-center text-sm text-[var(--muted)]">
@@ -165,14 +174,16 @@ export function Chat({ nickname }: ChatProps) {
         </div>
       </div>
 
-      <div className="border-t border-[var(--surface-elevated)] bg-[var(--surface)] px-4 py-3">
+      <div className="sticky bottom-0 z-20 shrink-0 border-t border-[var(--surface-elevated)] bg-[var(--surface)] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto flex max-w-lg gap-2">
           <textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Message Aduro..."
             rows={1}
+            autoFocus
             disabled={isTyping}
             className="max-h-32 flex-1 resize-none rounded-2xl border border-[var(--surface-elevated)] bg-[var(--background)] px-4 py-2.5 text-[15px] outline-none focus:border-[var(--accent)] disabled:opacity-50"
           />
