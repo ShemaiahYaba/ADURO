@@ -9,7 +9,8 @@ import type { ChatMessage, DialogueState, Emotion } from "@/lib/types";
 import { INITIAL_DIALOGUE_STATE } from "@/lib/types";
 
 const SESSION_KEY = "aduro_session_id";
-const TYPING_DELAY_MS = 800;
+/** Reduced — real realization latency often replaces the artificial delay. */
+const TYPING_DELAY_MS = 300;
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "anonymous";

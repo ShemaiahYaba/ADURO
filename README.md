@@ -1,19 +1,24 @@
 # Aduro
 
-Emotion-aware mental health support chatbot. Classifies user messages, responds with curated non-clinical templates and factual knowledge base entries.
+Emotion-aware mental health support chatbot. Classifies user messages with emotion + user act + salient facts, plans a dialogue act with a rule-based policy, then realizes a reply via constrained generation (with template fallbacks).
 
 ## Architecture
 
 ```
-Safety → Classify (emotion + userAct) → Dialogue policy (state machine) → Templates / KB
+Safety (deterministic)
+  → Understanding (emotion + userAct + facts)
+  → Dialogue policy (BotAct selection — rule-based)
+  → Realization (constrained LLM write, or template fallback)
+  → Output guard (deterministic clinical/format scan)
 ```
 
 - **Safety** runs on the latest message only (crisis, diagnosis, off-topic)
-- **Classifier** detects emotion and user act (disclose, doubt, ask why, etc.) — offline heuristics or OpenAI when configured
-- **Dialogue policy** uses `dialogueState` (flow, phase, lastBotAct) to pick the right template
-- User-facing text always comes from templates or KB — never generated clinical content
+- **Classifier** detects emotion, user act, and short factual fragments about the user's situation
+- **Dialogue policy** chooses a `BotAct` (`validate`, `explore`, `offer_coping`, …) from state — inspectable and unit-tested
+- **Realization** writes 1–3 sentences under an act contract + facts + style rules; templates are exemplars and fallbacks, not the only output
+- **Output guard** blocks diagnosis frames, medication mentions, unapproved helplines, and format violations
 
-Response selection is rule-based; emotion detection may use ML (survey-trained) or LLM-assisted act classification in production.
+Response *selection* (what to do) is rule-based. Surface *realization* (how to say it) may use LLM-assisted generation bounded by that policy. Emotion detection may use ML (survey-trained) or LLM-assisted classification.
 
 ## Quick start
 
@@ -26,7 +31,7 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Works without an API key using offline classification + lexical KB fallback.
+Works without an API key using offline classification + template realization.
 
 ## OpenAI setup
 
@@ -34,6 +39,7 @@ Works without an API key using offline classification + lexical KB fallback.
 
 ```env
 OPENAI_API_KEY=sk-...
+ADURO_REALIZATION=generated
 ```
 
 2. Restart the dev server: `pnpm dev`
@@ -42,6 +48,12 @@ OPENAI_API_KEY=sk-...
 
 ```bash
 pnpm run build:kb
+```
+
+4. Optional — force template-only replies (A/B / thesis comparison):
+
+```env
+ADURO_REALIZATION=template
 ```
 
 ## Scripts
@@ -57,22 +69,34 @@ pnpm run build:kb
 
 ## Dialogue state
 
-The client round-trips `dialogueState` with each message so multi-turn flows (stress support, rationale questions) work correctly. Refreshing the page resets the flow.
+The client round-trips `dialogueState` with each message:
+
+- `activeFlow` / `phase` / `lastBotAct` — multi-turn policy
+- `facts` — salient user disclosures (max 8, FIFO); cleared on refresh
+- `covered` — bot acts already performed this conversation
+- `turnCount` — turn index
+
+Refreshing the page resets the flow and facts.
 
 ## Privacy
 
-Conversation history is sent to OpenAI for classification only when the LLM classifier is invoked. Do not log message history server-side. Set OpenAI usage limits in your account before public deploy.
+- Conversation history and extracted facts are sent to OpenAI when the classifier and/or realization layer run
+- Facts are capped at 8 fragments and cleared on refresh
+- No server-side persistence or logging of message content
+- Set OpenAI usage limits before public deploy
 
 ## Helplines
 
 Verify SURPIN and MANI numbers in `src/lib/constants.ts` from official sources before production deploy.
 
-## Thesis / research (Phase 3)
+## Thesis / research (Phase 4)
 
 - `/survey` page for Likert + open-text data collection (80–120 responses)
 - Offline sklearn training pipeline (TF-IDF + composite scores)
-- Evaluation: emotion F1 for pattern-match vs act-classifier vs survey-trained model
-- Dialogue manager remains rule-based (`flows.json` + policy)
+- Evaluation: emotion F1, act-selection accuracy, guard block rate, template fallback rate
+- Dialogue manager remains rule-based (`flows.json` + policy); realization is constrained generation
+
+See [docs/PHASE-3-PLAN.md](docs/PHASE-3-PLAN.md) for the constrained-generation design.
 
 ## Tech stack
 

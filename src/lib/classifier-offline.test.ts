@@ -7,6 +7,7 @@ describe("classifier-offline", () => {
     const result = classifyOffline("heyyy aduro", INITIAL_DIALOGUE_STATE);
     expect(result.userAct).toBe("social");
     expect(result.templateId).toBe("greeting");
+    expect(result.facts).toEqual([]);
   });
 
   it("maps stress disclosure to stress flow entry", () => {
@@ -20,6 +21,7 @@ describe("classifier-offline", () => {
 
   it("infers decline in stress flow", () => {
     const result = classifyOffline("not really", {
+      ...INITIAL_DIALOGUE_STATE,
       activeFlow: "stress_support",
       phase: "offered_tips",
       lastBotAct: "offered_learn_more",
@@ -29,10 +31,22 @@ describe("classifier-offline", () => {
 
   it("infers elaborate when asked for cause", () => {
     const result = classifyOffline("just work", {
+      ...INITIAL_DIALOGUE_STATE,
       activeFlow: "stress_support",
       phase: "probe_cause",
       lastBotAct: "asked_cause",
     });
     expect(result.userAct).toBe("elaborate");
+  });
+
+  it("extracts breakup/cheat facts offline", () => {
+    const result = classifyOffline(
+      "She cheated that's all what should I do?",
+      INITIAL_DIALOGUE_STATE,
+    );
+    expect(result.facts.some((f) => /unfaithful|breakup|relationship/i.test(f))).toBe(
+      true,
+    );
+    expect(result.userAct).toBe("disclose_feeling");
   });
 });
