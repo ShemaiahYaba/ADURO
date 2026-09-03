@@ -30,6 +30,12 @@ export async function POST(req: Request) {
       dialogueState,
     );
 
+    // Realization metrics for evaluation (generation / fallback / block rates).
+    // Message content is deliberately not logged.
+    console.info(
+      `[aduro] realization=${result.source ?? "unknown"} emotion=${result.emotion} turn=${result.dialogueState.turnCount}`,
+    );
+
     return NextResponse.json(result);
   } catch {
     return NextResponse.json(

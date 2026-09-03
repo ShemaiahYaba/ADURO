@@ -26,11 +26,17 @@ const CONFIG_LEAK_PATTERNS: RegExp[] = [
   /\b(show\s+me\s+your\s+(prompt|config))\b/i,
 ];
 
+// Kept deliberately narrow: an over-broad pattern here would refuse ordinary
+// emotional conversation, which is the failure mode this layer exists to avoid.
 const DIAGNOSIS_PATTERNS: RegExp[] = [
   /\b(diagnos(e|is|ing)\s+me)\b/i,
   /\b(do\s+i\s+have\s+(depression|anxiety|bipolar|ptsd|adhd))\b/i,
   /\b(am\s+i\s+(depressed|mentally\s+ill))\b/i,
   /\bcan\s+you\s+tell\s+me\s+if\s+i\s+have\b/i,
+  /\bis\s+(this|it|that|what\s+i'?m\s+feeling)\s+(depression|clinical\s+depression|anxiety\s+disorder|bipolar|ptsd|adhd)\b/i,
+  /\bdo\s+you\s+think\s+i\s+(have|might\s+have)\s+(depression|anxiety|bipolar|ptsd|adhd)\b/i,
+  /\bdo\s+you\s+think\s+i'?m\s+(depressed|bipolar|mentally\s+ill)\b/i,
+  /\bcould\s+i\s+(have|be)\s+(depressed|depression|bipolar|mentally\s+ill)\b/i,
 ];
 
 const OFF_TOPIC_PATTERNS: RegExp[] = [

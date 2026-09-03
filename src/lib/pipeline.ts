@@ -94,7 +94,7 @@ export async function runPipeline(
       );
       const realized = await realize(
         decision,
-        decision.nextState,
+        state,
         message,
         history,
         sessionId,
@@ -116,9 +116,12 @@ export async function runPipeline(
     facts: state.facts,
   };
 
+  // Realization reads the pre-decision state: `nextState.covered` already
+  // contains the act being performed, which would tell the model not to
+  // repeat the very move it was just asked to make.
   const realized = await realize(
     decision,
-    decision.nextState,
+    state,
     message,
     history,
     sessionId,

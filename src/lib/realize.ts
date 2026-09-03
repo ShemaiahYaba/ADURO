@@ -27,8 +27,6 @@ const ACT_CONTRACTS: Record<BotAct, string> = {
     "Explain briefly why the previous suggestion might help. Stay non-clinical. Do not introduce a new suggestion.",
   affirm_progress:
     "Acknowledge what clicked for them. Affirm without over-praising. Invite them to continue if they want.",
-  refuse_diagnosis:
-    "Clearly decline to diagnose. Redirect to professional help. Stay warm.",
   answer_fact:
     "Not used — facts are returned verbatim from the knowledge base.",
   close:

@@ -6,16 +6,26 @@ const APPROVED_NUMBERS = new Set(
   Object.values(HELPLINES).map((h) => h.number.replace(/\s+/g, "")),
 );
 
-const DIAGNOSIS_FRAME =
-  /\byou\s+(have|might\s+have|may\s+have|are\s+suffering\s+from|suffer\s+from)\b/i;
+const DISORDER = String.raw`(?:depression|depressive\s+disorder|anxiety\s+disorder|generali[sz]ed\s+anxiety|bipolar(?:\s+disorder)?|ptsd|ocd|schizophrenia|adhd|mental\s+illness|disorder)`;
 
-const DISORDER_DIAGNOSTIC =
-  /\b(you\s+(have|might\s+have|may\s+have)\s+)?(depression|anxiety\s+disorder|bipolar|ptsd|ocd|schizophrenia|adhd)\b/i;
+/**
+ * A diagnosis needs a diagnostic frame AND a named condition. Matching the
+ * frame alone rejects ordinary validation — "you have every right to feel
+ * hurt", "you have been through a lot" — which are the phrasings this domain
+ * leans on most.
+ */
+const DIAGNOSIS_FRAME = new RegExp(
+  String.raw`\byou\s+(?:have|might\s+have|may\s+have|probably\s+have|likely\s+have|do\s+have|are\s+suffering\s+from|suffer\s+from|'?re\s+dealing\s+with)\s+(?:a\s+|an\s+|some\s+|clinical\s+)?(?:\w+\s+){0,2}` +
+    DISORDER,
+  "i",
+);
+
+/** Direct labelling: "you're depressed", "you sound bipolar". */
+const DIAGNOSIS_LABEL =
+  /\byou(?:\s+are|'?re|\s+sound|\s+seem|\s+must\s+be)\s+(?:clinically\s+)?(?:depressed|bipolar|schizophrenic|psychotic|mentally\s+ill)\b/i;
 
 const MEDICATION =
   /\b(medication|medications|prescri(be|ption|bed)|dosage|antidepressant|ssri|prozac|zoloft|xanax|valium)\b/i;
-
-const CLINICAL_CLAIM = /\b(clinically|diagnos(e|is|ed|ing)|disorder)\b/i;
 
 const PERSONA_BREAK = /\b(as an ai|language model|i'?m an? (ai|artificial))\b/i;
 
@@ -62,16 +72,16 @@ export function checkOutput(text: string): GuardResult {
     return { ok: false, reason: "diagnosis_frame" };
   }
 
-  if (DISORDER_DIAGNOSTIC.test(trimmed) && DIAGNOSIS_FRAME.test(trimmed)) {
-    return { ok: false, reason: "disorder_diagnosis" };
+  if (DIAGNOSIS_LABEL.test(trimmed)) {
+    return { ok: false, reason: "diagnosis_label" };
   }
 
   if (MEDICATION.test(trimmed)) {
     return { ok: false, reason: "medication" };
   }
 
-  // "disorder" / "diagnos*" in a diagnostic frame — allow casual mentions
-  // like "mental health" but block "clinically diagnosed"
+  // Bare condition names are fine ("depression is common"); asserting a
+  // clinical judgement is not.
   if (/\bclinically\b/i.test(trimmed) || /\bdiagnos(e|is|ed|ing)\b/i.test(trimmed)) {
     return { ok: false, reason: "clinical_claim" };
   }
@@ -88,13 +98,6 @@ export function checkOutput(text: string): GuardResult {
     );
     if (!approved) {
       return { ok: false, reason: "unapproved_helpline" };
-    }
-  }
-
-  // Soft check: "disorder" alone in diagnostic-ish context
-  if (CLINICAL_CLAIM.test(trimmed) && /\byou\b/i.test(trimmed)) {
-    if (/\b(disorder|diagnos)/i.test(trimmed)) {
-      return { ok: false, reason: "clinical_claim" };
     }
   }
 

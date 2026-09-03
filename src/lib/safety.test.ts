@@ -25,6 +25,28 @@ describe("safety", () => {
     }
   });
 
+  // Diagnosis handling stays fully deterministic, so these phrasings must be
+  // caught here rather than relying on the generation layer to decline.
+  it.each([
+    "is what i'm feeling depression?",
+    "do you think i have depression?",
+    "could i be depressed?",
+    "is this clinical depression",
+  ])("refuses softer self-diagnosis phrasing: %s", (message) => {
+    expect(checkSafety(message).handled).toBe(true);
+  });
+
+  // The inverse matters just as much: refusing these would break the very
+  // conversations Aduro exists to hold.
+  it.each([
+    "i think i'm depressed and i don't know what to do",
+    "do you think i should tell her how i feel",
+    "do you think i have a chance with her",
+    "she cheated that's all what should I do?",
+  ])("does not refuse emotional disclosure: %s", (message) => {
+    expect(checkSafety(message).handled).toBe(false);
+  });
+
   it("refuses off-topic questions", () => {
     expect(checkSafety("What is the capital of Nigeria?").handled).toBe(true);
     expect(checkSafety("How do I cook Jollof rice?").handled).toBe(true);

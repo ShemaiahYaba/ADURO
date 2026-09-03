@@ -21,6 +21,40 @@ describe("output-guard", () => {
     if (!result.ok) expect(result.reason).toBe("diagnosis_frame");
   });
 
+  it("rejects a diagnosis frame with an intervening qualifier", () => {
+    expect(checkOutput("You might have a fairly serious disorder.").ok).toBe(
+      false,
+    );
+  });
+
+  it("rejects direct labelling without a frame verb", () => {
+    const result = checkOutput("Honestly, you sound depressed to me.");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("diagnosis_label");
+  });
+
+  // The frame must require a named condition. Matching "you have ..." alone
+  // rejected the most natural validation phrasings in this domain and pushed
+  // every such turn down to the template fallback.
+  it.each([
+    "You have every right to feel hurt by that.",
+    "You have a lot on your plate right now.",
+    "You have been through something really painful.",
+    "It sounds like you have so much weighing on you.",
+    "You have people who care about you.",
+  ])("accepts supportive validation: %s", (text) => {
+    expect(checkOutput(text).ok).toBe(true);
+  });
+
+  it("accepts talking about a condition without diagnosing", () => {
+    expect(
+      checkOutput("Depression is more common than people think.").ok,
+    ).toBe(true);
+    expect(
+      checkOutput("Eating disorders are treatable, and you deserve support.").ok,
+    ).toBe(true);
+  });
+
   it("rejects medication mentions", () => {
     const result = checkOutput("You should ask your doctor about Zoloft.");
     expect(result.ok).toBe(false);

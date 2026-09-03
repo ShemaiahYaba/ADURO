@@ -31,7 +31,6 @@ export type BotAct =
   | "offer_coping"
   | "explain_rationale"
   | "affirm_progress"
-  | "refuse_diagnosis"
   | "answer_fact"
   | "close";
 
