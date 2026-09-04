@@ -93,10 +93,17 @@ function decide(
     chosen = rotateWithoutQuestion(state);
   }
 
+  // validate/reflect have no fixed pool — theirs is chosen by emotion.
+  const rotatedExemplar =
+    ACT_EXEMPLAR[chosen] ??
+    (chosen === "validate" || chosen === "reflect"
+      ? emotionToTemplate(emotion)
+      : undefined);
+
   const exemplarTemplateId =
     chosen === act
-      ? (opts.exemplarTemplateId ?? ACT_EXEMPLAR[chosen])
-      : (ACT_EXEMPLAR[chosen] ?? opts.exemplarTemplateId);
+      ? (opts.exemplarTemplateId ?? rotatedExemplar)
+      : (rotatedExemplar ?? opts.exemplarTemplateId);
 
   return {
     act: chosen,
@@ -182,13 +189,13 @@ function hasValidated(state: DialogueState): boolean {
   return state.covered.includes("validate") || state.covered.includes("reflect");
 }
 
+/**
+ * Requires actual disclosed content. Arc is deliberately not accepted as a
+ * proxy — it advances on turn count, so coping could be "earned" by a user
+ * who has said nothing.
+ */
 function hasElaborated(state: DialogueState, classification: Classification): boolean {
-  return (
-    classification.userAct === "elaborate" ||
-    state.facts.length > 0 ||
-    state.arc === "understanding" ||
-    state.arc === "supporting"
-  );
+  return state.facts.length > 0 || classification.userAct === "elaborate";
 }
 
 /** Earned advice: offer_coping only after validate + elaborate. */

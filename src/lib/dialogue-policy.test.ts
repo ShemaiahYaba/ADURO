@@ -164,3 +164,126 @@ describe("dialogue-policy (discourse)", () => {
     expect(decision.act).toBe("validate");
   });
 });
+
+describe("dialogue-policy: earned coping", () => {
+  const stuck = (partial: Partial<DialogueState> = {}) =>
+    state({
+      arc: "understanding",
+      covered: ["validate"],
+      lastBotAct: "reflect",
+      facts: ["partner was unfaithful"],
+      stuckTurns: 2,
+      ...partial,
+    });
+
+  it("offers coping once the user is heard but stuck", () => {
+    const decision = selectDecision(
+      base({ userAct: "express_uncertainty" }),
+      stuck(),
+      "i'm not exactly sure",
+    );
+    expect(decision.act).toBe("offer_coping");
+    expect(decision.allowQuestion).toBe(false);
+  });
+
+  it("marks the suggestion so a later doubt can be answered", () => {
+    const decision = selectDecision(
+      base({ userAct: "express_uncertainty" }),
+      stuck(),
+      "i'm not exactly sure",
+    );
+    expect(decision.nextState.lastBotAct).toBe("suggested_break");
+  });
+
+  it("does not offer coping before the user has been validated", () => {
+    const decision = selectDecision(
+      base({ userAct: "express_uncertainty" }),
+      stuck({ covered: [] }),
+      "i'm not exactly sure",
+    );
+    expect(decision.act).not.toBe("offer_coping");
+  });
+
+  it("does not offer coping before the user has disclosed anything", () => {
+    const decision = selectDecision(
+      base({ userAct: "express_uncertainty" }),
+      stuck({ facts: [] }),
+      "i'm not exactly sure",
+    );
+    expect(decision.act).not.toBe("offer_coping");
+  });
+
+  it("does not offer coping while the conversation is still moving", () => {
+    const decision = selectDecision(
+      base({ userAct: "express_uncertainty" }),
+      stuck({ stuckTurns: 1 }),
+      "i'm not exactly sure",
+    );
+    expect(decision.act).toBe("normalize_uncertainty");
+  });
+
+  it("offers coping at most once per conversation", () => {
+    const decision = selectDecision(
+      base({ userAct: "express_uncertainty" }),
+      stuck({ covered: ["validate", "offer_coping"] }),
+      "I really don't know",
+    );
+    expect(decision.act).not.toBe("offer_coping");
+  });
+});
+
+describe("dialogue-policy: rationale reachability", () => {
+  it("explains a suggestion made on the previous turn", () => {
+    const decision = selectDecision(
+      base({ userAct: "express_doubt" }),
+      state({ lastBotAct: "suggested_break", facts: ["feeling jaded"] }),
+      "really? how would that help",
+    );
+    expect(decision.act).toBe("explain_rationale");
+  });
+
+  it("explains a suggestion made a couple of turns back", () => {
+    const decision = selectDecision(
+      base({ userAct: "express_doubt" }),
+      state({
+        lastBotAct: "normalize_uncertainty",
+        lastSuggestion: "offer_coping",
+        facts: ["feeling jaded"],
+      }),
+      "really? how would that help",
+    );
+    expect(decision.act).toBe("explain_rationale");
+  });
+
+  it("never defends a suggestion it did not make", () => {
+    const decision = selectDecision(
+      base({ userAct: "express_doubt" }),
+      state({ lastBotAct: "validate", facts: ["went through a breakup"] }),
+      "really? how does that help",
+    );
+    expect(decision.act).not.toBe("explain_rationale");
+    expect(decision.act).toBe("reflect");
+  });
+});
+
+describe("dialogue-policy: exemplar coherence", () => {
+  it("remaps the exemplar when rotation changes the act", () => {
+    const decision = selectDecision(
+      base({
+        emotion: "sadness",
+        userAct: "elaborate",
+        facts: ["went through a breakup"],
+      }),
+      state({
+        arc: "understanding",
+        lastBotAct: "explore",
+        covered: ["validate", "explore"],
+        facts: ["went through a breakup"],
+        consecutiveQuestions: 2,
+      }),
+      "she moved out last week",
+    );
+    expect(decision.act).toBe("reflect");
+    expect(decision.exemplarTemplateId).toBe("sad");
+  });
+});
