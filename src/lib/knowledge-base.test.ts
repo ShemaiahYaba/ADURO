@@ -13,8 +13,15 @@ describe("knowledge-base", () => {
     expect(result!.emotion).toBe("factual");
   });
 
-  it("returns null for unknown factual queries without match", async () => {
+  it("retrieves anxiety symptoms from enriched KB", async () => {
     const result = await retrieveFact("What are the symptoms of anxiety?");
+    expect(result).not.toBeNull();
+    expect(result!.text.toLowerCase()).toContain("racing");
+    expect(result!.emotion).toBe("factual");
+  });
+
+  it("returns null for unknown factual queries without match", async () => {
+    const result = await retrieveFact("What is the capital of Neptune?");
     expect(result).toBeNull();
   });
 });

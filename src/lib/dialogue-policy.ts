@@ -1,4 +1,6 @@
 import { isStuck, shouldAllowQuestion } from "./discourse";
+import { buildClosingResponse } from "./constants";
+import { hadEmotionalDistress } from "./safety";
 import { lookupRationaleTemplate } from "./responses";
 import type {
   BotAct,
@@ -183,6 +185,29 @@ function templateToAct(templateId: string): BotAct {
     return "affirm_progress";
   }
   return "validate";
+}
+
+function shouldAllowClose(
+  state: DialogueState,
+  emotionalDisclosure: boolean,
+): boolean {
+  if (emotionalDisclosure) return false;
+  // Require at least one exchange before closing
+  if (state.turnCount < 1) return false;
+  return true;
+}
+
+function closeDecision(
+  emotion: Emotion,
+  state: DialogueState,
+  userAct: Classification["userAct"],
+  exemplarTemplateId?: string,
+): PolicyDecision {
+  return decide("close", emotion, state, userAct, {
+    exemplarTemplateId: exemplarTemplateId ?? "goodbye",
+    forceAllowQuestion: false,
+    verbatimText: buildClosingResponse(hadEmotionalDistress(state)),
+  });
 }
 
 function hasValidated(state: DialogueState): boolean {
@@ -370,10 +395,16 @@ export function selectDecision(
   if (classification.userAct === "social") {
     const tid = classification.templateId ?? "greeting";
     const act = templateToAct(tid);
-    if (act === "close" && emotionalDisclosure) {
-      return decide("validate", emotion, state, classification.userAct, {
-        exemplarTemplateId: emotionToTemplate(emotion),
-      });
+    if (act === "close") {
+      if (
+        !shouldAllowClose(state, emotionalDisclosure) ||
+        emotionalDisclosure
+      ) {
+        return decide("validate", emotion, state, classification.userAct, {
+          exemplarTemplateId: emotionToTemplate(emotion),
+        });
+      }
+      return closeDecision(emotion, state, classification.userAct, tid);
     }
     return decide(act, emotion, state, classification.userAct, {
       exemplarTemplateId: tid,
@@ -420,10 +451,21 @@ export function selectDecision(
   // Template hint (non-done)
   if (classification.templateId) {
     const act = templateToAct(classification.templateId);
-    if (act === "close" && emotionalDisclosure) {
-      return decide("validate", emotion === "neutral" ? "sadness" : emotion, state, classification.userAct, {
-        exemplarTemplateId: "sad",
-      });
+    if (act === "close") {
+      if (
+        !shouldAllowClose(state, emotionalDisclosure) ||
+        emotionalDisclosure
+      ) {
+        return decide("validate", emotion === "neutral" ? "sadness" : emotion, state, classification.userAct, {
+          exemplarTemplateId: "sad",
+        });
+      }
+      return closeDecision(
+        emotion,
+        state,
+        classification.userAct,
+        classification.templateId,
+      );
     }
     // Never start with offer_coping from stressed template — validate first
     if (act === "validate" || classification.templateId === "stressed") {

@@ -137,6 +137,31 @@ describe("dialogue-policy (discourse)", () => {
     expect(decision.act).not.toBe("close");
   });
 
+  it("closes warmly on goodbye after at least one exchange", () => {
+    const decision = selectDecision(
+      base({ emotion: "neutral", userAct: "social", templateId: "goodbye" }),
+      state({ turnCount: 2, covered: ["greet", "validate"] }),
+      "Thanks, talk to you later",
+    );
+    expect(decision.act).toBe("close");
+    expect(decision.verbatimText).toContain("glad we talked");
+  });
+
+  it("includes helplines in closing after distress", () => {
+    const decision = selectDecision(
+      base({ emotion: "neutral", userAct: "social", templateId: "goodbye" }),
+      state({
+        turnCount: 3,
+        covered: ["validate"],
+        facts: ["feeling anxious"],
+        arc: "surfacing",
+      }),
+      "Goodbye",
+    );
+    expect(decision.act).toBe("close");
+    expect(decision.verbatimText).toContain("SURPIN");
+  });
+
   it("returns break rationale on express_doubt after suggested_break", () => {
     const decision = selectDecision(
       base({ emotion: "stress", userAct: "express_doubt" }),

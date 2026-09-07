@@ -5,6 +5,7 @@ import {
   checkOutput,
   referencesFact,
 } from "./output-guard";
+import { refineReply } from "./refine";
 import { pickTemplate } from "./responses";
 import { getTemplateById } from "./templates";
 import type {
@@ -119,6 +120,8 @@ ${recentBlock}
 - 1–3 sentences only. No lists, headings, or markdown.
 - Second person, plain language, contractions OK.
 - Match the user's register; mirror emoji only if they used them.
+- Prefer concrete empathy tied to their situation over generic sympathy.
+- Audience: young adults — keep tone peer-like and culturally flexible (including Nigerian English / informal phrasing when they use it). Avoid US-clinic jargon.
 - Never claim to be human; never say "as an AI" or "language model".
 - Never diagnose, name a disorder in a diagnostic frame, or mention medication.
 - Never promise outcomes.
@@ -216,6 +219,17 @@ function acceptDraft(
   return { ok: true, factReferenced };
 }
 
+async function maybeRefine(
+  text: string,
+  source: RealizationSource,
+  state: DialogueState,
+): Promise<string> {
+  if (source !== "generated" && source !== "regenerated") {
+    return text;
+  }
+  return refineReply(text, state);
+}
+
 /**
  * Surface realization: LLM writes under policy constraints,
  * with deterministic guard + template fallback ladder.
@@ -275,11 +289,12 @@ export async function realize(
   if (first) {
     const check = acceptDraft(first, decision, state);
     if (check.ok) {
+      const refined = await maybeRefine(first, "generated", state);
       return {
-        text: first,
+        text: refined,
         source: "generated",
         factReferenced: check.factReferenced,
-        hadQuestion: first.includes("?"),
+        hadQuestion: refined.includes("?"),
       };
     }
 
@@ -287,11 +302,12 @@ export async function realize(
     if (second) {
       const check2 = acceptDraft(second, decision, state);
       if (check2.ok) {
+        const refined = await maybeRefine(second, "regenerated", state);
         return {
-          text: second,
+          text: refined,
           source: "regenerated",
           factReferenced: check2.factReferenced,
-          hadQuestion: second.includes("?"),
+          hadQuestion: refined.includes("?"),
         };
       }
     }

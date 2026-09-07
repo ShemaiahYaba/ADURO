@@ -1,39 +1,16 @@
+import { isClosingMessage } from "./safety";
+import {
+  emotionHintFromFacts,
+  extractSituationFacts,
+  looksLikeEmotionalSituation,
+} from "./situation-facts";
+import { normalizeMisspellings } from "./spell-normalize";
 import { getTemplateById } from "./templates";
 import { patternMatch } from "./pattern-match";
 import type { Classification, DialogueState, Emotion, UserAct } from "./types";
 
 function extractOfflineFacts(message: string): string[] {
-  const facts: string[] = [];
-  const msg = message.toLowerCase();
-
-  if (/\b(cheat(ed|ing)?|unfaithful|affair)\b/.test(msg)) {
-    facts.push("partner was unfaithful");
-  }
-  if (/\b(broke\s*up|break\s*up|breakup|dumped|left\s+me)\b/.test(msg)) {
-    facts.push("went through a breakup");
-  }
-  if (/\b(babe|girlfriend|boyfriend|partner|wife|husband)\b/.test(msg)) {
-    if (!facts.some((f) => f.includes("breakup") || f.includes("unfaithful"))) {
-      facts.push("relationship trouble");
-    }
-  }
-  if (/\b(exam|school|study|assignment)\b/.test(msg)) {
-    facts.push("academic pressure");
-  }
-  if (/\b(work|job|overtime|boss|shift)\b/.test(msg)) {
-    facts.push("work stress");
-  }
-  if (/\b(anxious|anxiety|uneasy)\b/.test(msg)) {
-    facts.push("feeling anxious");
-  }
-  if (/\b(sad|lonely|empty|down)\b/.test(msg)) {
-    facts.push("feeling sad");
-  }
-  if (/\b(angry|mad|furious|pissed)\b/.test(msg)) {
-    facts.push("feeling angry");
-  }
-
-  return facts.slice(0, 3);
+  return extractSituationFacts(message);
 }
 
 /** Contextual acts for short mid-conversation replies. */
@@ -116,8 +93,19 @@ export function classifyOffline(
   message: string,
   state: DialogueState,
 ): Classification {
-  const facts = extractOfflineFacts(message);
-  const contextual = inferContextualUserAct(message, state.lastBotAct);
+  const normalized = normalizeMisspellings(message);
+  const facts = extractOfflineFacts(normalized);
+  const contextual = inferContextualUserAct(normalized, state.lastBotAct);
+
+  if (isClosingMessage(normalized)) {
+    return {
+      emotion: "neutral",
+      userAct: "social",
+      facts: [],
+      templateId: "goodbye",
+      confidence: 0.85,
+    };
+  }
 
   // Mid-arc short replies: prefer contextual acts
   if (state.arc !== "opening" && message.trim().split(/\s+/).length <= 12) {
@@ -134,14 +122,9 @@ export function classifyOffline(
         "elaborate",
       ].includes(contextual)
     ) {
+      const pooled = [...state.facts, ...facts];
       return {
-        emotion:
-          state.facts.some((f) => /anxious/i.test(f)) ||
-          facts.some((f) => /anxious/i.test(f))
-            ? "anxiety"
-            : state.facts.some((f) => /angry/i.test(f))
-              ? "anger"
-              : "sadness",
+        emotion: emotionHintFromFacts(pooled),
         userAct: contextual,
         facts,
         confidence: 0.7,
@@ -149,11 +132,9 @@ export function classifyOffline(
     }
   }
 
-  const match = patternMatch(message);
+  const match = patternMatch(normalized);
   if (match.matched) {
-    const emotionalFacts = facts.some((f) =>
-      /unfaithful|breakup|relationship|anxious|sad|work|academic|angry/i.test(f),
-    );
+    const emotionalFacts = looksLikeEmotionalSituation(facts);
     if (
       emotionalFacts &&
       match.routeType === "conversational" &&
@@ -164,20 +145,14 @@ export function classifyOffline(
       // Check advice request inside emotional message
       if (contextual === "request_advice") {
         return {
-          emotion: "sadness",
+          emotion: emotionHintFromFacts(facts),
           userAct: "request_advice",
           facts,
           confidence: 0.75,
         };
       }
       return {
-        emotion: facts.some((f) => f.includes("anxious"))
-          ? "anxiety"
-          : facts.some((f) => f.includes("angry"))
-            ? "anger"
-            : facts.some((f) => f.includes("work") || f.includes("academic"))
-              ? "stress"
-              : "sadness",
+        emotion: emotionHintFromFacts(facts),
         userAct: "disclose_feeling",
         facts,
         confidence: Math.max(match.confidence, 0.6),
@@ -218,22 +193,21 @@ export function classifyOffline(
 
   if (contextual === "request_advice") {
     return {
-      emotion: "sadness",
+      emotion: emotionHintFromFacts(facts),
       userAct: "request_advice",
       facts,
       confidence: 0.65,
     };
   }
 
-  if (facts.length > 0 || /\b(sad|hurt|pain|heart|cheat|broke|angry)\b/i.test(message)) {
+  if (
+    facts.length > 0 ||
+    /\b(sad|hurt|pain|heart|cheat|broke|angry|lonely|overwhelmed|jaded)\b/i.test(
+      message,
+    )
+  ) {
     return {
-      emotion: facts.some((f) => f.includes("anxious"))
-        ? "anxiety"
-        : facts.some((f) => f.includes("angry"))
-          ? "anger"
-          : facts.some((f) => f.includes("work") || f.includes("academic"))
-            ? "stress"
-            : "sadness",
+      emotion: emotionHintFromFacts(facts),
       userAct: "disclose_feeling",
       facts: facts.length > 0 ? facts : extractOfflineFacts(message),
       confidence: 0.55,

@@ -48,6 +48,16 @@ describe("classifier-offline", () => {
     expect(result.userAct).toBe("request_advice");
   });
 
+  it("extracts family/academic YA situations offline", () => {
+    const result = classifyOffline(
+      "Hostel life and my mum keep pressuring me about exams",
+      INITIAL_DIALOGUE_STATE,
+    );
+    expect(result.facts.some((f) => /academic|family/i.test(f))).toBe(true);
+    expect(result.emotion).toBe("stress");
+    expect(result.userAct).toBe("disclose_feeling");
+  });
+
   it("detects express_uncertainty", () => {
     const result = classifyOffline("i'm not exactly sure", {
       ...INITIAL_DIALOGUE_STATE,

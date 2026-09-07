@@ -5,18 +5,21 @@ import {
   KB_LIMIT_RESPONSE,
   OFF_TOPIC_REFUSAL,
 } from "./constants";
-import type { SafetyResult } from "./types";
+import { normalizeMisspellings } from "./spell-normalize";
+import type { DialogueState, SafetyResult } from "./types";
 
 const CRISIS_PATTERNS: RegExp[] = [
-  /\b(kill\s+myself|killing\s+myself)\b/i,
-  /\b(commit\s+suicide|end\s+my\s+life)\b/i,
+  /\b(kill+\s+myself|killing\s+myself)\b/i,
+  /\b(comm+it\s+suicide|end\s+my\s+life)\b/i,
   /\b(want\s+to\s+die|wanna\s+die)\b/i,
   /\b(hurt\s+myself|harm\s+myself)\b/i,
   /\b(no\s+point\s+in\s+(living|continuing|going\s+on))\b/i,
   /\b(don'?t\s+see\s+(any\s+)?point\s+in\s+continuing)\b/i,
   /\b(do\s+not\s+see\s+(any\s+)?point\s+in\s+continuing)\b/i,
   /\b(better\s+off\s+dead)\b/i,
-  /\b(suicid)/i,
+  // Normalized spellings (after typo fix) and fuzzy variants
+  /\b(suicid(e|al))\b/i,
+  /\bs[uoa]+c[i]?d(e|al|le)?\b/i,
 ];
 
 const CONFIG_LEAK_PATTERNS: RegExp[] = [
@@ -39,13 +42,48 @@ const DIAGNOSIS_PATTERNS: RegExp[] = [
   /\bcould\s+i\s+(have|be)\s+(depressed|depression|bipolar|mentally\s+ill)\b/i,
 ];
 
+/** Category-level patterns — refuse clearly out-of-scope requests. */
 const OFF_TOPIC_PATTERNS: RegExp[] = [
-  /\b(capital\s+of\s+(nigeria|france|ghana|kenya|the\s+world))\b/i,
+  // General knowledge / trivia
+  /\b(what('s| is)\s+the\s+(capital|population|president|currency|flag)\s+of)\b/i,
+  /\b(who\s+(won|invented|discovered|is\s+the\s+(president|ceo|founder)))\b/i,
+  /\b(tell\s+me\s+(a\s+)?(fact|joke)|random\s+fact)\b/i,
+  /\b(capital\s+of\s+\w+)\b/i,
+  // Technical / coding
+  /\b(write|debug|fix|review|build)\s+(me\s+)?(a\s+\w+\s+)?(code|program|script|function|app|website)\b/i,
+  /\b(how\s+(do|to)\s+(code|program|debug|deploy))\b/i,
+  /\b(explain\s+(the\s+)?(osi\s+model|algorithm|binary|compiler|api\s+design))\b/i,
+  // Arithmetic / calculations / math (not emotional support about math anxiety)
+  /\b(what('s| is)\s+)?\d+\s*[\+\-\*\/x×÷]\s*\d+\b/i, // "what's 1+1", "2*3", "5-2"
+  /\b(add|subtract|multiply|divide|calculate)\s+\d+/i, // "add 2 and 3", "multiply 5"
+  /\b(can\s+you\s+)?(add|subtract|multiply|divide|calculate|compute|solve)\b.*\d/i, // "can you add", "solve 5+3"
+  /\bwhat('s| is)\s+\d+\s+(plus|minus|times|divided\s+by)\s+\d+\b/i, // "what's 5 plus 3"
+  // Homework / academic tasks (not emotional support about school)
+  /\b(do\s+my\s+(homework|assignment|essay|project))\b/i,
+  /\b(solve\s+(this|the)\s+(equation|problem|math))\b/i,
+  /\bhelp\s+me\s+(with\s+)?(my\s+)?(homework|assignment|essay)\b/i,
+  // General knowledge (category-level)
+  /\b(what\s+(year|date|time|language|country|continent))\b/i,
+  /\b(how\s+(many|much|old|tall|long|far)\s+(is|are|was|were))\b/i,
+  /\btranslate\s+(this|the|to)\b/i,
+  // Business / finance
+  /\b(stock\s+(price|tip|market)|invest(ment)?\s+advice|crypto\s+tip)\b/i,
+  /\b(how\s+to\s+start\s+a\s+business|marketing\s+strategy)\b/i,
+  // Entertainment recommendations
+  /\b(recommend\s+(a|some|me)\s+(movie|show|series|book|game|song|album|podcast))\b/i,
+  /\bwhat\s+(movie|show|series|book|game)\s+should\s+i\s+(watch|read|play)\b/i,
+  // Cooking / recipes / weather
+  /\b(how\s+do\s+i\s+cook|recipe\s+for|jollof\s+rice|ingredients\s+for)\b/i,
+  /\b(weather\s+(in|for|today|tomorrow|forecast))\b/i,
   /\b(who\s+won\s+(the\s+)?world\s+cup)\b/i,
-  /\b(how\s+do\s+i\s+cook|jollof\s+rice|recipe\s+for)\b/i,
-  /\b(explain\s+(the\s+)?osi\s+model)\b/i,
-  /\b(write\s+(me\s+)?(code|a\s+program))\b/i,
-  /\b(weather\s+in|stock\s+price)\b/i,
+];
+
+/** Closing signals — user is ending the conversation. */
+export const CLOSING_PATTERNS: RegExp[] = [
+  /\b(goodbye|good\s+bye|bye\s+for\s+now|see\s+you(\s+later|\s+soon)?|talk\s+(to\s+you\s+)?later|catch\s+you\s+later)\b/i,
+  /\b(that'?s\s+all\s+for\s+now|i'?m\s+done|we'?re\s+done|nothing\s+else\s+to\s+say)\b/i,
+  /\b(thanks?[,.\s]+.*(bye|later|goodbye)|thank\s+you[,.\s]+.*(talk\s+later|goodbye))\b/i,
+  /\b(gotta\s+go|have\s+to\s+go|signing\s+off)\b/i,
 ];
 
 const KB_LIMIT_PATTERNS: RegExp[] = [
@@ -55,8 +93,48 @@ const KB_LIMIT_PATTERNS: RegExp[] = [
   /\bwhat\s+can\s+you\s+answer\b/i,
 ];
 
+/** Emotional wellness cues — off-topic patterns must not override these. */
+const EMOTIONAL_WELLNESS_CUES: RegExp[] = [
+  /\b(feel(ing)?|felt|emotion|mood|mental\s+health)\b/i,
+  /\b(anxi|depress|stress|sad|lonely|overwhelm|hopeless|grief|trauma|therapy|counsel)/i,
+  /\b(can'?t\s+cope|breaking\s+down|panic|worried\s+about)\b/i,
+];
+
+function hasEmotionalWellnessCue(message: string): boolean {
+  return EMOTIONAL_WELLNESS_CUES.some((p) => p.test(message));
+}
+
+export function isClosingMessage(message: string): boolean {
+  const normalized = normalizeMisspellings(message.trim());
+  if (!normalized) return false;
+  // "that's all" mid-sentence with more content is usually not a closing
+  if (
+    /\bthat'?s\s+all\b/i.test(normalized) &&
+    /\b(what|should|why|how|cheat|feel|help)\b/i.test(normalized)
+  ) {
+    return false;
+  }
+  return CLOSING_PATTERNS.some((p) => p.test(normalized));
+}
+
+export function hadEmotionalDistress(state: DialogueState): boolean {
+  const emotionalActs = new Set([
+    "validate",
+    "reflect",
+    "offer_coping",
+    "normalize_uncertainty",
+    "sit_with",
+    "answer_directly",
+  ]);
+  return (
+    state.facts.length > 0 ||
+    state.covered.some((a) => emotionalActs.has(a)) ||
+    ["surfacing", "understanding", "supporting"].includes(state.arc)
+  );
+}
+
 export function checkSafety(message: string): SafetyResult {
-  const trimmed = message.trim();
+  const trimmed = normalizeMisspellings(message.trim());
   if (!trimmed) {
     return { handled: false };
   }
@@ -85,9 +163,11 @@ export function checkSafety(message: string): SafetyResult {
     }
   }
 
-  for (const pattern of OFF_TOPIC_PATTERNS) {
-    if (pattern.test(trimmed)) {
-      return { handled: true, text: OFF_TOPIC_REFUSAL, emotion: "off_topic" };
+  if (!hasEmotionalWellnessCue(trimmed)) {
+    for (const pattern of OFF_TOPIC_PATTERNS) {
+      if (pattern.test(trimmed)) {
+        return { handled: true, text: OFF_TOPIC_REFUSAL, emotion: "off_topic" };
+      }
     }
   }
 
@@ -95,5 +175,6 @@ export function checkSafety(message: string): SafetyResult {
 }
 
 export function isHopelessnessMessage(message: string): boolean {
-  return /\b(hopeless|no\s+hope|nothing\s+left)\b/i.test(message);
+  const normalized = normalizeMisspellings(message);
+  return /\b(hopeless|no\s+hope|nothing\s+left)\b/i.test(normalized);
 }

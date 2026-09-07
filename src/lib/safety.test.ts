@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { checkSafety, isHopelessnessMessage } from "./safety";
+import {
+  checkSafety,
+  hadEmotionalDistress,
+  isClosingMessage,
+  isHopelessnessMessage,
+} from "./safety";
+import { INITIAL_DIALOGUE_STATE } from "./types";
 
 describe("safety", () => {
   it("catches explicit crisis language", () => {
@@ -49,8 +55,52 @@ describe("safety", () => {
 
   it("refuses off-topic questions", () => {
     expect(checkSafety("What is the capital of Nigeria?").handled).toBe(true);
+    expect(checkSafety("What's the capital of France?").handled).toBe(true);
     expect(checkSafety("How do I cook Jollof rice?").handled).toBe(true);
     expect(checkSafety("Explain the OSI model").handled).toBe(true);
+    expect(checkSafety("Write me a Python script").handled).toBe(true);
+    expect(checkSafety("Recommend a movie to watch").handled).toBe(true);
+  });
+
+  it("refuses arithmetic and calculation requests", () => {
+    expect(checkSafety("what's 1+1").handled).toBe(true);
+    expect(checkSafety("What is 2+2?").handled).toBe(true);
+    expect(checkSafety("can you add 1+1?").handled).toBe(true);
+    expect(checkSafety("Add 5 and 3").handled).toBe(true);
+    expect(checkSafety("what's 10 times 5").handled).toBe(true);
+    expect(checkSafety("Calculate 100 divided by 4").handled).toBe(true);
+    expect(checkSafety("multiply 7*8").handled).toBe(true);
+    expect(checkSafety("5-2").handled).toBe(true);
+  });
+
+  it("catches common crisis misspellings", () => {
+    expect(checkSafety("I'm feeling sucidal").handled).toBe(true);
+    expect(checkSafety("I want to committ suicide").handled).toBe(true);
+    expect(checkSafety("I might killl myself").handled).toBe(true);
+  });
+
+  it("detects closing messages", () => {
+    expect(isClosingMessage("Thanks, talk to you later")).toBe(true);
+    expect(isClosingMessage("That's all for now")).toBe(true);
+    expect(isClosingMessage("See you")).toBe(true);
+    expect(isClosingMessage("I'm done")).toBe(true);
+  });
+
+  it("does not treat emotional that's all as closing", () => {
+    expect(
+      isClosingMessage("She cheated that's all what should I do?"),
+    ).toBe(false);
+  });
+
+  it("tracks emotional distress in dialogue state", () => {
+    expect(hadEmotionalDistress(INITIAL_DIALOGUE_STATE)).toBe(false);
+    expect(
+      hadEmotionalDistress({
+        ...INITIAL_DIALOGUE_STATE,
+        covered: ["validate"],
+        arc: "surfacing",
+      }),
+    ).toBe(true);
   });
 
   it("detects hopelessness", () => {
@@ -60,5 +110,17 @@ describe("safety", () => {
   it("passes normal emotional messages through", () => {
     const result = checkSafety("I feel really anxious about my exams");
     expect(result.handled).toBe(false);
+  });
+
+  it("passes emotional wellness context about math through", () => {
+    // These contain numbers/arithmetic but have emotional wellness cues
+    expect(checkSafety("I'm stressed I can't even add 1+1 anymore").handled).toBe(false);
+    expect(checkSafety("I feel dumb because I failed my math test").handled).toBe(false);
+    expect(checkSafety("I'm anxious about not understanding math").handled).toBe(false);
+  });
+
+  it("passes misspelled emotional wellness messages through", () => {
+    expect(checkSafety("I'm feeling anxeity about work").handled).toBe(false);
+    expect(checkSafety("I feel hopless lately").handled).toBe(false);
   });
 });

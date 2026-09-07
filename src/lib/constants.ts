@@ -27,7 +27,16 @@ export const DIAGNOSIS_REFUSAL =
   "I can't diagnose or confirm any mental health condition. Only a qualified professional can do that. If you're worried about how you've been feeling, speaking with a counsellor or doctor would be a good next step.";
 
 export const OFF_TOPIC_REFUSAL =
-  "Sorry, I can't help you with that. I'm here for emotional support and general mental health information.";
+  "I appreciate you reaching out, but that's a bit outside what I can help with. I'm here for emotional support and general mental health conversation — what's on your mind?";
+
+export function buildClosingResponse(hadDistress: boolean): string {
+  const base =
+    "I'm glad we talked. Take care of yourself, and know you can come back anytime you need someone to listen.";
+  if (hadDistress) {
+    return `${base} If things feel heavy again, ${HELPLINES.surpin.name} (${HELPLINES.surpin.number}) and ${HELPLINES.mani.name} (${HELPLINES.mani.number}) are there for you too.`;
+  }
+  return base;
+}
 
 export const NO_INFO_RESPONSE =
   "I don't have enough information in my knowledge base to answer that accurately. I can help with emotional support or general mental health topics if you'd like.";

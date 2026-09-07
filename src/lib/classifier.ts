@@ -6,6 +6,7 @@ import {
   inferContextualUserAct,
 } from "./classifier-offline";
 import { isOpenAiConfigured, routerModel } from "./openai";
+import { estimateTokens } from "./spell-normalize";
 import { getAllTemplates } from "./templates";
 import type {
   ChatTurn,
@@ -84,8 +85,9 @@ userAct meanings:
 
 facts:
 - Extract at most 3 short factual fragments the user disclosed THIS turn, in third person.
-- Examples: "broke up with partner", "partner was unfaithful"
-- Return [] if none. Do not invent.
+- Prefer concrete situations over vague mood labels when both appear.
+- Good examples: "partner was unfaithful", "went through a breakup", "family pressure about school", "money worries about fees", "academic pressure from exams", "feeling ignored or ghosted", "dealing with loss", "work stress from boss", "faith or community pressure", "feeling lonely", "feeling overwhelmed"
+- Return [] if none. Do not invent. Keep fragments under ~8 words.
 
 Guidelines:
 - Prefer request_advice over elaborate when they ask what to do.
@@ -100,15 +102,41 @@ Dialogue state: arc=${state.arc}, lastBotAct=${state.lastBotAct}, consecutiveQue
 Known templateIds: ${templateHintList()}`;
 }
 
+const MAX_CLASSIFIER_PROMPT_TOKENS = 2000;
+const MAX_HISTORY_TURNS = 10;
+
 function dedupeHistory(history: ChatTurn[], currentMessage: string): ChatTurn[] {
   const trimmed = currentMessage.trim().toLowerCase();
   const filtered = history.filter(
     (t) => !(t.role === "user" && t.content.trim().toLowerCase() === trimmed),
   );
-  return filtered.slice(-6).map((t) => ({
+  return filtered.slice(-MAX_HISTORY_TURNS).map((t) => ({
     role: t.role,
     content: t.content.slice(0, 400),
   }));
+}
+
+/** Drop oldest turns first if the classification prompt would exceed the token budget. */
+export function truncateHistoryForClassifier(
+  history: ChatTurn[],
+  currentMessage: string,
+  state: DialogueState,
+): ChatTurn[] {
+  const deduped = dedupeHistory(history, currentMessage);
+  let budget =
+    estimateTokens(currentMessage) + estimateTokens(buildSystemPrompt(state));
+
+  const kept: ChatTurn[] = [];
+  for (let i = deduped.length - 1; i >= 0; i--) {
+    const turn = deduped[i]!;
+    const turnTokens = estimateTokens(turn.content);
+    if (budget + turnTokens > MAX_CLASSIFIER_PROMPT_TOKENS && kept.length > 0) {
+      break;
+    }
+    budget += turnTokens;
+    kept.unshift(turn);
+  }
+  return kept;
 }
 
 function normalizeFacts(facts: string[] | undefined): string[] {
@@ -176,7 +204,7 @@ async function classifyWithLlm(
   history: ChatTurn[],
   state: DialogueState,
 ): Promise<Classification> {
-  const recent = dedupeHistory(history, message);
+  const recent = truncateHistoryForClassifier(history, message, state);
 
   const { output } = await generateText({
     model: routerModel(),

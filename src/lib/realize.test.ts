@@ -237,3 +237,49 @@ describe("realize policy enforcement", () => {
     expect(result.text).not.toContain("?");
   });
 });
+
+describe("realize refinement", () => {
+  beforeEach(() => {
+    mocks.generateText.mockReset();
+    mocks.isConfigured.mockReset();
+    mocks.isConfigured.mockReturnValue(true);
+    vi.stubEnv("ADURO_REALIZATION", "generated");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("skips refinement when ADURO_REFINEMENT is disabled", async () => {
+    vi.stubEnv("ADURO_REFINEMENT", "disabled");
+    mocks.generateText.mockResolvedValue({ text: CLEAN });
+
+    const result = await run(decision());
+
+    expect(result.text).toBe(CLEAN);
+    expect(mocks.generateText).toHaveBeenCalledTimes(1);
+  });
+
+  it("refines generated text when ADURO_REFINEMENT is enabled", async () => {
+    vi.stubEnv("ADURO_REFINEMENT", "enabled");
+    mocks.generateText
+      .mockResolvedValueOnce({ text: CLEAN })
+      .mockResolvedValueOnce({ text: "That sounds really painful — it makes sense you're reeling." });
+
+    const result = await run(decision());
+
+    expect(result.source).toBe("generated");
+    expect(result.text).toBe("That sounds really painful — it makes sense you're reeling.");
+    expect(mocks.generateText).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not refine template fallback sources", async () => {
+    vi.stubEnv("ADURO_REFINEMENT", "enabled");
+    vi.stubEnv("ADURO_REALIZATION", "template");
+
+    const result = await run(decision());
+
+    expect(result.source).toBe("template");
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+});

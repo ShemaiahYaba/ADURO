@@ -1,7 +1,7 @@
 [
   {
     "tag": "mental-health-fact",
-    "response": "According to a UNICEF report, One in seven Indians between 15-24 years of age feels depressed",
+    "response": "According to WHO and regional reports, many young people in Africa face high rates of depression and anxiety, yet few get formal care. In Nigeria, free helplines like SURPIN (0800 078 7746) and MANI (0800 000 2000) exist so people can talk to someone without needing a clinic visit first.",
     "patternText": "Tell me a fact about mental health | Tell me another fact about mental health",
     "embedding": null
   },
@@ -189,6 +189,30 @@
     "tag": "fact-32",
     "response": "Sadness is a normal reaction to a loss, disappointment, problems, or other difficult situations. Feeling sad from time to time is just another part of being human. In these cases, feelings of sadness go away quickly and you can go about your daily life. Other ways to talk about sadness might be feeling low, feeling down, or feeling blue.A person may say they are feeling depressed, but if it goes away on its own and doesn't impact life in a big way, it probably isn't the illness of depression. Depression is a mental illness that affects your mood, the way you understand yourself, and the way you understand and relate to things around you. It can also go by different names, such as clinical depression, major depressive disorder, or major depression. Depression can come up for no reason, and it lasts for a long time. It's much more than sadness or low mood. People who experience depression may feel worthless or hopeless. They may feel unreasonable guilty. Some people may experience depression as anger or irritability. It may be hard to concentrate or make decisions. Most people lose interest in things that they used to enjoy and may isolate themselves from others. There are also physical signs of depression, such as problems with sleep, appetite and energy and unexplainable aches or pains. Some may experience difficult thoughts about death or ending their life (suicide). Depression lasts longer than two weeks, doesn't usually go away on its own, and impacts your life. It's a real illness, and it is very treatable. It's important to seek help if you're concerned about depression.",
     "patternText": "What's the difference between sadness and depression? | difference between sadness and depression",
+    "embedding": null
+  },
+  {
+    "tag": "fact-33",
+    "response": "Anxiety can show up as constant worry, racing thoughts, restlessness, trouble concentrating, irritability, or a sense that something bad will happen. In the body it may feel like a racing heart, tight chest, sweating, shaking, stomach upset, or trouble sleeping. Short-term anxiety around exams, interviews, or conflict is common; when it lasts for weeks, keeps you from school or work, or feels out of control, talking with a trusted person or a counsellor is a good next step. Aduro cannot diagnose — only a qualified professional can.",
+    "patternText": "What are the symptoms of anxiety? | How do I know if I have anxiety? | signs of anxiety | anxiety symptoms",
+    "embedding": null
+  },
+  {
+    "tag": "fact-34",
+    "response": "Stress is your mind and body's response to pressure — deadlines, money, family expectations, conflict, or too many demands at once. Short bursts can help you focus; ongoing stress can leave you tired, tense, irritable, or unable to sleep. Helpful first steps include naming what's loading you, resting when you can, moving your body, talking to someone you trust, and breaking tasks into smaller pieces. If stress feels unmanageable, local helplines like SURPIN (0800 078 7746) or MANI (0800 000 2000) can listen.",
+    "patternText": "What is stress? | Define stress | How do I deal with stress?",
+    "embedding": null
+  },
+  {
+    "tag": "fact-35",
+    "response": "In Nigeria you can call SURPIN (Suicide Research and Prevention Initiative) on 0800 078 7746 or MANI (Mentally Aware Nigeria Initiative) on 0800 000 2000. Both offer free support. If you are in immediate danger, contact emergency services or go to the nearest hospital. Aduro is supportive conversation only — not a crisis service or a substitute for professional care.",
+    "patternText": "Where can I get help in Nigeria? | Nigerian helpline | mental health helpline Nigeria | SURPIN | MANI",
+    "embedding": null
+  },
+  {
+    "tag": "fact-36",
+    "response": "Grief is the emotional response to losing someone or something that mattered — a person, a relationship, a chance, or a sense of safety. It can include sadness, anger, numbness, guilt, relief, or waves that come and go. There is no fixed timeline. Talking about the person or situation, keeping small routines, resting, and accepting support from people you trust can help. If grief feels stuck or overwhelming for a long time, a counsellor can walk with you.",
+    "patternText": "What is grief? | How do I deal with grief? | coping with loss",
     "embedding": null
   }
 ]
