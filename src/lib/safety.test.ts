@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  checkOffTopicHeuristic,
   checkSafety,
   hadEmotionalDistress,
   isClosingMessage,
@@ -53,24 +54,46 @@ describe("safety", () => {
     expect(checkSafety(message).handled).toBe(false);
   });
 
-  it("refuses off-topic questions", () => {
-    expect(checkSafety("What is the capital of Nigeria?").handled).toBe(true);
-    expect(checkSafety("What's the capital of France?").handled).toBe(true);
-    expect(checkSafety("How do I cook Jollof rice?").handled).toBe(true);
-    expect(checkSafety("Explain the OSI model").handled).toBe(true);
-    expect(checkSafety("Write me a Python script").handled).toBe(true);
-    expect(checkSafety("Recommend a movie to watch").handled).toBe(true);
+  it("leaves off-topic to the scope gate / heuristic (not hard safety)", () => {
+    expect(checkSafety("What's the capital of France?").handled).toBe(false);
+    expect(checkSafety("what's 1+1").handled).toBe(false);
   });
 
-  it("refuses arithmetic and calculation requests", () => {
-    expect(checkSafety("what's 1+1").handled).toBe(true);
-    expect(checkSafety("What is 2+2?").handled).toBe(true);
-    expect(checkSafety("can you add 1+1?").handled).toBe(true);
-    expect(checkSafety("Add 5 and 3").handled).toBe(true);
-    expect(checkSafety("what's 10 times 5").handled).toBe(true);
-    expect(checkSafety("Calculate 100 divided by 4").handled).toBe(true);
-    expect(checkSafety("multiply 7*8").handled).toBe(true);
-    expect(checkSafety("5-2").handled).toBe(true);
+  it("heuristic refuses off-topic questions", () => {
+    expect(checkOffTopicHeuristic("What is the capital of Nigeria?").handled).toBe(true);
+    expect(checkOffTopicHeuristic("What's the capital of France?").handled).toBe(true);
+    expect(checkOffTopicHeuristic("How do I cook Jollof rice?").handled).toBe(true);
+    expect(checkOffTopicHeuristic("Explain the OSI model").handled).toBe(true);
+    expect(checkOffTopicHeuristic("Write me a Python script").handled).toBe(true);
+    expect(checkOffTopicHeuristic("Recommend a movie to watch").handled).toBe(true);
+  });
+
+  it("heuristic refuses arithmetic and calculation requests", () => {
+    expect(checkOffTopicHeuristic("what's 1+1").handled).toBe(true);
+    expect(checkOffTopicHeuristic("What is 2+2?").handled).toBe(true);
+    expect(checkOffTopicHeuristic("can you add 1+1?").handled).toBe(true);
+    expect(checkOffTopicHeuristic("Add 5 and 3").handled).toBe(true);
+    expect(checkOffTopicHeuristic("what's 10 times 5").handled).toBe(true);
+    expect(checkOffTopicHeuristic("Calculate 100 divided by 4").handled).toBe(true);
+    expect(checkOffTopicHeuristic("multiply 7*8").handled).toBe(true);
+    expect(checkOffTopicHeuristic("5-2").handled).toBe(true);
+  });
+
+  it("heuristic refuses biography / mythology trivia", () => {
+    expect(checkOffTopicHeuristic("WHO IS ODUDUWA").handled).toBe(true);
+    expect(checkOffTopicHeuristic("Hey Aduro, who is Oduduwa").handled).toBe(true);
+    expect(checkOffTopicHeuristic("who was Shakespeare").handled).toBe(true);
+  });
+
+  it("heuristic does not refuse conversational who-is", () => {
+    expect(checkOffTopicHeuristic("who is there for me").handled).toBe(false);
+    expect(checkOffTopicHeuristic("who is feeling this with me").handled).toBe(false);
+  });
+
+  it("heuristic does not refuse wellness education definitions", () => {
+    expect(checkOffTopicHeuristic("CAN YOU DEFINE EMOTION").handled).toBe(false);
+    expect(checkOffTopicHeuristic("what is anxiety").handled).toBe(false);
+    expect(checkOffTopicHeuristic("what does burnout mean").handled).toBe(false);
   });
 
   it("catches common crisis misspellings", () => {
@@ -112,11 +135,16 @@ describe("safety", () => {
     expect(result.handled).toBe(false);
   });
 
-  it("passes emotional wellness context about math through", () => {
-    // These contain numbers/arithmetic but have emotional wellness cues
-    expect(checkSafety("I'm stressed I can't even add 1+1 anymore").handled).toBe(false);
-    expect(checkSafety("I feel dumb because I failed my math test").handled).toBe(false);
-    expect(checkSafety("I'm anxious about not understanding math").handled).toBe(false);
+  it("heuristic passes emotional wellness context about math through", () => {
+    expect(
+      checkOffTopicHeuristic("I'm stressed I can't even add 1+1 anymore").handled,
+    ).toBe(false);
+    expect(
+      checkOffTopicHeuristic("I feel dumb because I failed my math test").handled,
+    ).toBe(false);
+    expect(
+      checkOffTopicHeuristic("I'm anxious about not understanding math").handled,
+    ).toBe(false);
   });
 
   it("passes misspelled emotional wellness messages through", () => {

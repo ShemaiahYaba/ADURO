@@ -16,6 +16,8 @@ describe("pipeline", () => {
     resetKbCache();
     vi.restoreAllMocks();
     process.env.ADURO_REALIZATION = "template";
+    // Pipeline unit tests exercise dialogue policy, not live scope LLM calls.
+    process.env.ADURO_SCOPE_GATE = "disabled";
   });
 
   it("handles crisis", async () => {

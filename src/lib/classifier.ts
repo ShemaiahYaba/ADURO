@@ -50,8 +50,9 @@ const classificationSchema = z.object({
   emotion: emotionSchema,
   userAct: userActSchema,
   facts: z.array(z.string()).max(3).default([]),
-  templateId: z.string().optional(),
-  topic: z.string().optional(),
+  // OpenAI structured outputs require every key in `required` — use null, not optional.
+  templateId: z.string().nullable(),
+  topic: z.string().nullable(),
   confidence: z.number().min(0).max(1),
 });
 
@@ -174,7 +175,7 @@ function normalizeLlmClassification(
     emotion = "neutral";
   }
 
-  let templateId = output.templateId;
+  let templateId = output.templateId ?? undefined;
   if (
     templateId === "done" &&
     (userAct === "disclose_feeling" ||
@@ -194,7 +195,7 @@ function normalizeLlmClassification(
     userAct,
     facts,
     templateId,
-    topic: output.topic,
+    topic: output.topic ?? undefined,
     confidence: output.confidence,
   };
 }

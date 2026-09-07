@@ -8,6 +8,7 @@ import {
 import { retrieveFact } from "./knowledge-base";
 import { realize } from "./realize";
 import { checkSafety } from "./safety";
+import { checkScope } from "./scope-gate";
 import type {
   ChatTurn,
   DialogueState,
@@ -37,11 +38,23 @@ export async function runPipeline(
 ): Promise<PipelineResult> {
   let state = normalizeDialogueState(dialogueState);
 
+  // 1. Hard safety — deterministic, never deferred to an LLM
   const safety = checkSafety(message);
   if (safety.handled) {
     return {
       text: safety.text,
       emotion: safety.emotion,
+      dialogueState: state,
+      source: "safety",
+    };
+  }
+
+  // 2. Scope gate — LLM man-in-the-middle (regex fallback when disabled)
+  const scope = await checkScope(message, history);
+  if (scope.handled) {
+    return {
+      text: scope.text,
+      emotion: scope.emotion,
       dialogueState: state,
       source: "safety",
     };

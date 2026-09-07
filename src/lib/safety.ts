@@ -46,7 +46,8 @@ const DIAGNOSIS_PATTERNS: RegExp[] = [
 const OFF_TOPIC_PATTERNS: RegExp[] = [
   // General knowledge / trivia
   /\b(what('s| is)\s+the\s+(capital|population|president|currency|flag)\s+of)\b/i,
-  /\b(who\s+(won|invented|discovered|is\s+the\s+(president|ceo|founder)))\b/i,
+  /\b(who\s+(won|invented|discovered|founded|created))\b/i,
+  /\bwho\s+(is|was)\s+(the\s+)?(president|ceo|founder|prime\s+minister)\b/i,
   /\b(tell\s+me\s+(a\s+)?(fact|joke)|random\s+fact)\b/i,
   /\b(capital\s+of\s+\w+)\b/i,
   // Technical / coding
@@ -54,10 +55,10 @@ const OFF_TOPIC_PATTERNS: RegExp[] = [
   /\b(how\s+(do|to)\s+(code|program|debug|deploy))\b/i,
   /\b(explain\s+(the\s+)?(osi\s+model|algorithm|binary|compiler|api\s+design))\b/i,
   // Arithmetic / calculations / math (not emotional support about math anxiety)
-  /\b(what('s| is)\s+)?\d+\s*[\+\-\*\/x×÷]\s*\d+\b/i, // "what's 1+1", "2*3", "5-2"
-  /\b(add|subtract|multiply|divide|calculate)\s+\d+/i, // "add 2 and 3", "multiply 5"
-  /\b(can\s+you\s+)?(add|subtract|multiply|divide|calculate|compute|solve)\b.*\d/i, // "can you add", "solve 5+3"
-  /\bwhat('s| is)\s+\d+\s+(plus|minus|times|divided\s+by)\s+\d+\b/i, // "what's 5 plus 3"
+  /\b(what('s| is)\s+)?\d+\s*[\+\-\*\/x×÷]\s*\d+\b/i,
+  /\b(add|subtract|multiply|divide|calculate)\s+\d+/i,
+  /\b(can\s+you\s+)?(add|subtract|multiply|divide|calculate|compute|solve)\b.*\d/i,
+  /\bwhat('s| is)\s+\d+\s+(plus|minus|times|divided\s+by)\s+\d+\b/i,
   // Homework / academic tasks (not emotional support about school)
   /\b(do\s+my\s+(homework|assignment|essay|project))\b/i,
   /\b(solve\s+(this|the)\s+(equation|problem|math))\b/i,
@@ -163,15 +164,78 @@ export function checkSafety(message: string): SafetyResult {
     }
   }
 
-  if (!hasEmotionalWellnessCue(trimmed)) {
-    for (const pattern of OFF_TOPIC_PATTERNS) {
-      if (pattern.test(trimmed)) {
-        return { handled: true, text: OFF_TOPIC_REFUSAL, emotion: "off_topic" };
-      }
+  // Off-topic is handled by the LLM scope gate (with heuristic fallback).
+  // Hard safety stays deterministic: crisis, config, diagnosis, KB limits.
+
+  return { handled: false };
+}
+
+/**
+ * Cheap regex fallback for off-topic when the LLM scope gate is disabled
+ * or unavailable. Emotional wellness cues still win.
+ */
+export function checkOffTopicHeuristic(message: string): SafetyResult {
+  const trimmed = normalizeMisspellings(message.trim());
+  if (!trimmed) return { handled: false };
+
+  if (hasEmotionalWellnessCue(trimmed)) {
+    return { handled: false };
+  }
+
+  for (const pattern of OFF_TOPIC_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return { handled: true, text: OFF_TOPIC_REFUSAL, emotion: "off_topic" };
     }
   }
 
+  // Biography / mythology trivia: "who is Oduduwa" but not "who is there for me"
+  if (isBiographyQuestion(trimmed)) {
+    return { handled: true, text: OFF_TOPIC_REFUSAL, emotion: "off_topic" };
+  }
+
   return { handled: false };
+}
+
+const BIOGRAPHY_OBJECT_STOPWORDS = new Set([
+  "there",
+  "this",
+  "that",
+  "she",
+  "he",
+  "it",
+  "someone",
+  "anyone",
+  "everybody",
+  "everybody",
+  "with",
+  "going",
+  "coming",
+  "next",
+  "here",
+  "home",
+  "left",
+  "right",
+  "to",
+  "for",
+  "me",
+  "you",
+  "we",
+  "they",
+  "a",
+  "an",
+  "the",
+  "more",
+  "feeling",
+  "hurting",
+  "asking",
+  "listening",
+]);
+
+/** "who is Oduduwa" / "who was Shakespeare" — not "who is there for me". */
+export function isBiographyQuestion(message: string): boolean {
+  const match = message.match(/\bwho\s+(?:is|was)\s+([a-z][a-z'\-]{2,})\b/i);
+  if (!match?.[1]) return false;
+  return !BIOGRAPHY_OBJECT_STOPWORDS.has(match[1].toLowerCase());
 }
 
 export function isHopelessnessMessage(message: string): boolean {

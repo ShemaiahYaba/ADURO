@@ -8,6 +8,15 @@ export function routerModel() {
   return openai(process.env.ADURO_ROUTER_MODEL ?? "gpt-4o-mini");
 }
 
+/** Scope-gate model — can be cheaper/smaller than the router. */
+export function scopeModel() {
+  return openai(
+    process.env.ADURO_SCOPE_MODEL ??
+      process.env.ADURO_ROUTER_MODEL ??
+      "gpt-4o-mini",
+  );
+}
+
 export function embedModel() {
   return openai.embedding(process.env.ADURO_EMBED_MODEL ?? "text-embedding-3-small");
 }
