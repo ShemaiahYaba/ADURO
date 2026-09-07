@@ -38,7 +38,7 @@ const ACT_CONTRACTS: Record<BotAct, string> = {
   sit_with:
     "Low-demand presence. Stay with them without pushing. Do not ask a question. Do not give advice.",
   answer_fact:
-    "Not used — facts are returned verbatim from the knowledge base.",
+    "Answer the mental-health or emotional education question clearly in 1–2 sentences of plain language. Lead with the definition or explanation — do not dodge into 'what prompted your interest'. No diagnosis. No clinical claims about the user. If allowQuestion is true, you may add one soft invite after the answer.",
   close:
     "Only use when the user is clearly ending the conversation with no open emotional distress. Wish them well briefly.",
 };
@@ -251,21 +251,8 @@ export async function realize(
     };
   }
 
-  if (decision.act === "answer_fact") {
-    const text = templateFallback(
-      decision,
-      state,
-      sessionId,
-      messageIndex,
-      userMessage,
-    );
-    return {
-      text,
-      source: "kb",
-      factReferenced: false,
-      hadQuestion: text.includes("?"),
-    };
-  }
+  // answer_fact without verbatim: generate (or template) an education reply.
+  // KB hits still arrive via verbatimText above.
 
   if (realizationMode() === "template" || !isOpenAiConfigured()) {
     const text = templateFallback(

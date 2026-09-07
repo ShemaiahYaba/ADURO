@@ -704,6 +704,15 @@
         "A small next step beats a perfect plan — rest, talk to someone you trust, or write what you know so far."
       ],
       "patterns": []
+    },
+    "wellness_education": {
+      "emotion": "support",
+      "responses": [
+        "Emotions are the body's and mind's way of signalling that something matters — joy, fear, sadness, anger, and the rest. They're information, not a verdict on who you are. Want to talk about one you're sitting with?",
+        "An emotion is a felt response to what's happening inside or around you — temporary, meaningful, and human. Naming it often makes it easier to carry. Is there a feeling you've been trying to put words to?",
+        "Emotions are natural reactions that help us notice needs, threats, and connections. They can be intense without being permanent. Happy to unpack any one of them with you."
+      ],
+      "patterns": []
     }
   }
 }

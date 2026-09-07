@@ -4,6 +4,10 @@ import { OFF_TOPIC_REFUSAL } from "./constants";
 import { isOpenAiConfigured, scopeModel } from "./openai";
 import { checkOffTopicHeuristic } from "./safety";
 import type { ChatTurn, SafetyResult } from "./types";
+import {
+  historySuggestsWellnessThread,
+  isShortContinuation,
+} from "./wellness-education";
 
 const SCOPE_MIN_CONFIDENCE = 0.55;
 const MAX_HISTORY_TURNS = 4;
@@ -40,7 +44,13 @@ IN SCOPE (inScope = true) when the user is seeking:
   - "what is anxiety"
   - "what does burnout mean"
   - "how does stress affect the body"
-- Continuing an emotional conversation (short replies like "yeah", "not sure")
+- Continuing an emotional OR wellness-education conversation
+  Short replies after such a thread are IN SCOPE:
+  - "just curious"
+  - "yeah"
+  - "ok"
+  - "not sure"
+  - "tell me more"
 - Greetings / thanks / goodbye BY THEMSELVES
 - Emotional framing that happens to mention numbers or school
   e.g. "I'm stressed I can't even add 1+1 anymore" → IN SCOPE
@@ -54,17 +64,21 @@ OUT OF SCOPE (inScope = false) when the message is primarily:
 - A greeting PLUS an out-of-scope ask — the ask wins
   Example: "Hey Aduro, who is Oduduwa?" → OUT OF SCOPE
   Example: "Hey Aduro, what's 1+1?" → OUT OF SCOPE
+- A translation / coding / math TASK even if it contains feeling words
+  Example: "translate this to french: I feel sad" → OUT OF SCOPE
 
 Critical distinction:
 - "define emotion" / "what is depression" → IN SCOPE (wellness education)
 - "who is Oduduwa" / "capital of France" → OUT OF SCOPE (encyclopedia)
+- After a wellness question, "just curious" → IN SCOPE (continuation)
 
 Rules:
 1. Strip social openers ("hey", "hi aduro") and judge the REQUEST that remains.
-2. If the ask is about feelings, mind, mood, mental health, or coping → IN SCOPE.
-3. Prefer OUT OF SCOPE only for clear non-wellness tasks/trivia — not for wellness vocabulary.
-4. Never mark crisis / self-harm as out of scope.
-5. Be decisive. confidence = how sure you are.`;
+2. Use conversation history. Short continuations of an in-scope thread stay in scope.
+3. If the ask is about feelings, mind, mood, mental health, or coping → IN SCOPE.
+4. Prefer OUT OF SCOPE only for clear non-wellness tasks/trivia — not for wellness vocabulary.
+5. Never mark crisis / self-harm as out of scope.
+6. Be decisive. confidence = how sure you are.`;
 
 function recentHistory(history: ChatTurn[]): ChatTurn[] {
   return history.slice(-MAX_HISTORY_TURNS);
@@ -127,17 +141,30 @@ function refuse(): SafetyResult {
  * Runs AFTER hard safety (crisis / diagnosis / config), BEFORE classify.
  *
  * Dual gate: LLM judgment OR heuristic — either may refuse.
- * Heuristic catches clear cases even when the model is soft on compound greetings.
+ * Short continuations of a wellness thread are never refused by the LLM alone.
  */
 export async function checkScope(
   message: string,
   history: ChatTurn[] = [],
 ): Promise<SafetyResult> {
-  // Always run the cheap heuristic (on the greeting-stripped payload too)
   const stripped = stripSocialOpener(message);
   const heuristic =
     checkOffTopicHeuristic(message).handled ||
     checkOffTopicHeuristic(stripped).handled;
+
+  // Continuations like "just curious" after a wellness thread stay in scope
+  // unless the heuristic catches an obvious new off-topic task.
+  const wellnessContinuation =
+    isShortContinuation(message) &&
+    historySuggestsWellnessThread(history) &&
+    !heuristic;
+
+  if (wellnessContinuation) {
+    console.info(
+      `[aduro:scope] inScope=true conf=1.00 heuristic=0 reason=short_wellness_continuation`,
+    );
+    return { handled: false };
+  }
 
   if (!isScopeGateEnabled() || !isOpenAiConfigured()) {
     return heuristic ? refuse() : { handled: false };

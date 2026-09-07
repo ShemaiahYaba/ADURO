@@ -2,6 +2,7 @@ import { isStuck, shouldAllowQuestion } from "./discourse";
 import { buildClosingResponse } from "./constants";
 import { hadEmotionalDistress } from "./safety";
 import { lookupRationaleTemplate } from "./responses";
+import { isWellnessEducationAsk } from "./wellness-education";
 import type {
   BotAct,
   Classification,
@@ -51,6 +52,7 @@ const ACT_EXEMPLAR: Partial<Record<BotAct, string>> = {
   normalize_uncertainty: "uncertainty_ok",
   sit_with: "presence",
   answer_directly: "advice_humble",
+  answer_fact: "wellness_education",
   explore: "prompt_elaborate",
   offer_coping: "stressed",
   explain_rationale: "break_rationale",
@@ -252,6 +254,18 @@ export function selectDecision(
     classification.userAct === "ask_about_situation" ||
     classification.userAct === "express_uncertainty" ||
     EMOTIONAL.has(classification.emotion);
+
+  // --- Wellness education: answer the question, don't only reflect ---
+  if (
+    isWellnessEducationAsk(userMessage) ||
+    (classification.userAct === "factual_question" &&
+      isWellnessEducationAsk(userMessage))
+  ) {
+    return decide("answer_fact", "support", state, classification.userAct, {
+      exemplarTemplateId: "wellness_education",
+      forceAllowQuestion: true,
+    });
+  }
 
   // --- Reciprocity (highest priority) ---
 

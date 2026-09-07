@@ -137,9 +137,36 @@ describe("scope-gate", () => {
     const call = mocks.generateText.mock.calls[0]?.[0] as {
       messages: Array<{ role: string; content: string }>;
     };
-    expect(call.messages.some((m) => m.content.includes("broke up"))).toBe(
-      true,
-    );
-    expect(call.messages.at(-1)?.content).toContain("yeah");
+    // Short wellness continuation short-circuits before LLM
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("allows short continuations of a wellness thread without refusing", async () => {
+    mocks.generateText.mockResolvedValue({
+      output: {
+        inScope: false,
+        confidence: 0.95,
+        reason: "no emotional framing",
+      },
+    });
+
+    const result = await checkScope("JUST CURIOUS", [
+      { role: "user", content: "CAN YOU DEFINE EMOTION FOR ME?" },
+      {
+        role: "assistant",
+        content: "Emotions can be complex. What prompted your interest?",
+      },
+    ]);
+
+    expect(result.handled).toBe(false);
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("still refuses short off-topic asks mid-thread via heuristic", async () => {
+    const result = await checkScope("what's 1+1", [
+      { role: "user", content: "I'm feeling sad" },
+      { role: "assistant", content: "I'm here with you." },
+    ]);
+    expect(result.handled).toBe(true);
   });
 });
