@@ -18,6 +18,24 @@ describe("safety", () => {
     }
   });
 
+  it.each([
+    "I'm thinking of ending it all",
+    "I'm thinking of ending my life",
+    "I'm thinking of taking my life",
+    "I'm taking my life",
+    "I want to end my life",
+    "I'm taking my own life",
+    "I don't want to be alive",
+    "I'm thinkng of ending it all",
+  ])("catches crisis phrasing: %s", (message) => {
+    const result = checkSafety(message);
+    expect(result.handled).toBe(true);
+    if (result.handled) {
+      expect(result.emotion).toBe("crisis");
+      expect(result.text).toContain("SURPIN");
+    }
+  });
+
   it("catches indirect crisis language", () => {
     const result = checkSafety("I do not see any point in continuing");
     expect(result.handled).toBe(true);

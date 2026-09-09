@@ -12,6 +12,14 @@ import {
 const SCOPE_MIN_CONFIDENCE = 0.55;
 const MAX_HISTORY_TURNS = 4;
 
+/** Bare greetings — always in scope; never send to the LLM gate. */
+const PURE_GREETING =
+  /^(hey+|hi+|hello|yo|sup|heya|good\s+(morning|afternoon|evening))([\s,!.]*aduro)?[\s,!.]*$/i;
+
+export function isPureGreeting(message: string): boolean {
+  return PURE_GREETING.test(message.trim());
+}
+
 const scopeSchema = z.object({
   inScope: z.boolean(),
   confidence: z.number().min(0).max(1),
@@ -147,6 +155,14 @@ export async function checkScope(
   message: string,
   history: ChatTurn[] = [],
 ): Promise<SafetyResult> {
+  // Greetings alone are always in scope — the LLM has been soft-refusing them.
+  if (isPureGreeting(message)) {
+    console.info(
+      `[aduro:scope] inScope=true conf=1.00 heuristic=0 reason=pure_greeting`,
+    );
+    return { handled: false };
+  }
+
   const stripped = stripSocialOpener(message);
   const heuristic =
     checkOffTopicHeuristic(message).handled ||

@@ -127,9 +127,12 @@ function decide(
 /** Never emit the same act three turns running; rotate on consecutive repeat. */
 function rotateIfRepeating(act: BotAct, state: DialogueState): BotAct {
   if (act !== state.lastBotAct) return act;
+  // Social bookends stay social — never rotate a greeting into uncertainty.
+  if (act === "greet" || act === "close") return act;
   if (act === "normalize_uncertainty") return "sit_with";
   if (act === "sit_with") return "normalize_uncertainty";
   if (act === "answer_directly") return "reflect";
+  if (act === "answer_fact") return "answer_fact";
   return rotateWithoutQuestion(state);
 }
 

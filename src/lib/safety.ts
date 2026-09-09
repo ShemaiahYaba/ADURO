@@ -10,13 +10,16 @@ import type { DialogueState, SafetyResult } from "./types";
 
 const CRISIS_PATTERNS: RegExp[] = [
   /\b(kill+\s+myself|killing\s+myself)\b/i,
-  /\b(comm+it\s+suicide|end\s+my\s+life)\b/i,
-  /\b(want\s+to\s+die|wanna\s+die)\b/i,
-  /\b(hurt\s+myself|harm\s+myself)\b/i,
+  /\b(comm+it\s+suicide|end(ing)?\s+my\s+life)\b/i,
+  /\b(end(ing)?\s+it\s+all)\b/i,
+  /\b(want\s+to\s+die|wanna\s+die|thinking\s+of\s+dying)\b/i,
+  /\b(hurt\s+myself|harm\s+myself|cut\s+myself)\b/i,
   /\b(no\s+point\s+in\s+(living|continuing|going\s+on))\b/i,
   /\b(don'?t\s+see\s+(any\s+)?point\s+in\s+continuing)\b/i,
   /\b(do\s+not\s+see\s+(any\s+)?point\s+in\s+continuing)\b/i,
   /\b(better\s+off\s+dead)\b/i,
+  /\b(tak(e|ing)\s+my\s+(own\s+)?life)\b/i,
+  /\b(don'?t\s+want\s+to\s+(be\s+)?alive|don'?t\s+want\s+to\s+live)\b/i,
   // Normalized spellings (after typo fix) and fuzzy variants
   /\b(suicid(e|al))\b/i,
   /\bs[uoa]+c[i]?d(e|al|le)?\b/i,

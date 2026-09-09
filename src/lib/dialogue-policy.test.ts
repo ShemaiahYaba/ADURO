@@ -311,4 +311,18 @@ describe("dialogue-policy: exemplar coherence", () => {
     expect(decision.act).toBe("reflect");
     expect(decision.exemplarTemplateId).toBe("sad");
   });
+
+  it("does not rotate repeated greetings into uncertainty", () => {
+    const decision = selectDecision(
+      base({
+        emotion: "neutral",
+        userAct: "social",
+        templateId: "greeting",
+      }),
+      state({ lastBotAct: "greet", turnCount: 2 }),
+      "hey",
+    );
+    expect(decision.act).toBe("greet");
+    expect(decision.act).not.toBe("normalize_uncertainty");
+  });
 });

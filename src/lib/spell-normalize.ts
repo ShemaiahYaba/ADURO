@@ -14,6 +14,8 @@ const WORD_FIXES: Array<[RegExp, string]> = [
   [/\bdepressd\b/gi, "depressed"],
   [/\bhopless\b/gi, "hopeless"],
   [/\bhopeles\b/gi, "hopeless"],
+  [/\bthinkng\b/gi, "thinking"],
+  [/\bthiking\b/gi, "thinking"],
 ];
 
 export function normalizeMisspellings(text: string): string {

@@ -141,6 +141,12 @@ describe("scope-gate", () => {
     expect(mocks.generateText).not.toHaveBeenCalled();
   });
 
+  it("allows pure greetings without calling the LLM", async () => {
+    const result = await checkScope("hey aduro");
+    expect(result.handled).toBe(false);
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
   it("allows short continuations of a wellness thread without refusing", async () => {
     mocks.generateText.mockResolvedValue({
       output: {
